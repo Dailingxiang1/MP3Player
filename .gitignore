@@ -1,0 +1,28 @@
+# Keil uVision user files
+*.uvoptx
+*.uvguix.*
+
+# Build outputs
+*.axf
+*.crf
+*.d
+*.dep
+*.hex
+*.htm
+*.lnp
+*.lst
+*.map
+*.o
+
+# Generated logs and backups
+*.Bak
+JLinkLog.txt
+uv4_check.log
+
+# Keil output directories
+MDK-ARM/AD_UART/
+MDK-ARM/DebugConfig/
+MDK-ARM/RTE/Device/
+
+# Windows special-name artifact
+CON

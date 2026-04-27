@@ -22,6 +22,7 @@
 #include "stm32f4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "lvgl.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,6 +42,24 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
+volatile uint32_t g_fault_id;
+volatile uint32_t g_fault_cfsr;
+volatile uint32_t g_fault_hfsr;
+volatile uint32_t g_fault_dfsr;
+volatile uint32_t g_fault_afsr;
+volatile uint32_t g_fault_bfar;
+volatile uint32_t g_fault_mmfar;
+volatile uint32_t g_fault_app_phase;
+volatile uint32_t g_fault_last_cmd;
+volatile uint32_t g_fault_sp;
+volatile uint32_t g_fault_r0;
+volatile uint32_t g_fault_r1;
+volatile uint32_t g_fault_r2;
+volatile uint32_t g_fault_r3;
+volatile uint32_t g_fault_r12;
+volatile uint32_t g_fault_lr;
+volatile uint32_t g_fault_pc;
+volatile uint32_t g_fault_psr;
 
 /* USER CODE END PV */
 
@@ -51,11 +70,58 @@
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static void Fault_Delay(uint32_t count)
+{
+    volatile uint32_t delay;
+
+    for (delay = 0; delay < count; delay++)
+    {
+      __NOP();
+    }
+}
+
+void Fault_HandlerC(uint32_t *fault_stack, uint32_t fault_id)
+{
+  g_fault_id = fault_id;
+  g_fault_cfsr = SCB->CFSR;
+  g_fault_hfsr = SCB->HFSR;
+  g_fault_dfsr = SCB->DFSR;
+  g_fault_afsr = SCB->AFSR;
+  g_fault_bfar = SCB->BFAR;
+  g_fault_mmfar = SCB->MMFAR;
+  g_fault_app_phase = g_app_phase;
+  g_fault_last_cmd = g_app_last_cmd;
+
+  if (fault_stack != 0) {
+    g_fault_sp = (uint32_t)fault_stack;
+    g_fault_r0 = fault_stack[0];
+    g_fault_r1 = fault_stack[1];
+    g_fault_r2 = fault_stack[2];
+    g_fault_r3 = fault_stack[3];
+    g_fault_r12 = fault_stack[4];
+    g_fault_lr = fault_stack[5];
+    g_fault_pc = fault_stack[6];
+    g_fault_psr = fault_stack[7];
+  }
+
+  __disable_irq();
+  while (1)
+  {
+    uint32_t i;
+    for (i = 0; i < fault_id; i++)
+    {
+      HAL_GPIO_WritePin(led_out_GPIO_Port, led_out_Pin, GPIO_PIN_SET);
+      Fault_Delay(200000U);
+      HAL_GPIO_WritePin(led_out_GPIO_Port, led_out_Pin, GPIO_PIN_RESET);
+      Fault_Delay(200000U);
+    }
+    Fault_Delay(1200000U);
+  }
+}
 
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
-extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 extern DMA_HandleTypeDef hdma_spi2_tx;
 extern DMA_HandleTypeDef hdma_sdio_rx;
 /* USER CODE BEGIN EV */
@@ -83,61 +149,57 @@ void NMI_Handler(void)
 /**
   * @brief This function handles Hard fault interrupt.
   */
-void HardFault_Handler(void)
+__asm void HardFault_Handler(void)
 {
-  /* USER CODE BEGIN HardFault_IRQn 0 */
-
-  /* USER CODE END HardFault_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_HardFault_IRQn 0 */
-    /* USER CODE END W1_HardFault_IRQn 0 */
-  }
+  EXTERN Fault_HandlerC
+  TST LR, #4
+  ITE EQ
+  MRSEQ R0, MSP
+  MRSNE R0, PSP
+  MOV R1, #1
+  B Fault_HandlerC
 }
 
 /**
   * @brief This function handles Memory management fault.
   */
-void MemManage_Handler(void)
+__asm void MemManage_Handler(void)
 {
-  /* USER CODE BEGIN MemoryManagement_IRQn 0 */
-
-  /* USER CODE END MemoryManagement_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_MemoryManagement_IRQn 0 */
-    /* USER CODE END W1_MemoryManagement_IRQn 0 */
-  }
+  EXTERN Fault_HandlerC
+  TST LR, #4
+  ITE EQ
+  MRSEQ R0, MSP
+  MRSNE R0, PSP
+  MOV R1, #2
+  B Fault_HandlerC
 }
 
 /**
   * @brief This function handles Pre-fetch fault, memory access fault.
   */
-void BusFault_Handler(void)
+__asm void BusFault_Handler(void)
 {
-  /* USER CODE BEGIN BusFault_IRQn 0 */
-
-  /* USER CODE END BusFault_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_BusFault_IRQn 0 */
-    /* USER CODE END W1_BusFault_IRQn 0 */
-  }
+  EXTERN Fault_HandlerC
+  TST LR, #4
+  ITE EQ
+  MRSEQ R0, MSP
+  MRSNE R0, PSP
+  MOV R1, #3
+  B Fault_HandlerC
 }
 
 /**
   * @brief This function handles Undefined instruction or illegal state.
   */
-void UsageFault_Handler(void)
+__asm void UsageFault_Handler(void)
 {
-  /* USER CODE BEGIN UsageFault_IRQn 0 */
-
-  /* USER CODE END UsageFault_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_UsageFault_IRQn 0 */
-    /* USER CODE END W1_UsageFault_IRQn 0 */
-  }
+  EXTERN Fault_HandlerC
+  TST LR, #4
+  ITE EQ
+  MRSEQ R0, MSP
+  MRSNE R0, PSP
+  MOV R1, #4
+  B Fault_HandlerC
 }
 
 /**
@@ -189,6 +251,7 @@ void SysTick_Handler(void)
   /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();
   /* USER CODE BEGIN SysTick_IRQn 1 */
+  lv_tick_inc(1);
 
   /* USER CODE END SysTick_IRQn 1 */
 }
@@ -212,6 +275,20 @@ void EXTI0_IRQHandler(void)
   /* USER CODE BEGIN EXTI0_IRQn 1 */
 
   /* USER CODE END EXTI0_IRQn 1 */
+}
+
+/**
+  * @brief This function handles EXTI line1 interrupt.
+  */
+void EXTI1_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI1_IRQn 0 */
+
+  /* USER CODE END EXTI1_IRQn 0 */
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_1);
+  /* USER CODE BEGIN EXTI1_IRQn 1 */
+
+  /* USER CODE END EXTI1_IRQn 1 */
 }
 
 /**
@@ -240,20 +317,6 @@ void DMA2_Stream3_IRQHandler(void)
   /* USER CODE BEGIN DMA2_Stream3_IRQn 1 */
 
   /* USER CODE END DMA2_Stream3_IRQn 1 */
-}
-
-/**
-  * @brief This function handles USB On The Go FS global interrupt.
-  */
-void OTG_FS_IRQHandler(void)
-{
-  /* USER CODE BEGIN OTG_FS_IRQn 0 */
-
-  /* USER CODE END OTG_FS_IRQn 0 */
-  HAL_PCD_IRQHandler(&hpcd_USB_OTG_FS);
-  /* USER CODE BEGIN OTG_FS_IRQn 1 */
-
-  /* USER CODE END OTG_FS_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */

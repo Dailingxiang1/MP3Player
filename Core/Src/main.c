@@ -18,20 +18,21 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "adc.h"
 #include "dma.h"
 #include "fatfs.h"
+#include "i2c.h"
 #include "i2s.h"
 #include "sdio.h"
 #include "tim.h"
 #include "usart.h"
-#include "usb_device.h"
 #include "gpio.h"
+#include "fsmc.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include "string.h"
+
 
 /* USER CODE END Includes */
 
@@ -64,7 +65,6 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-FATFS fs1;
 
 /* USER CODE END 0 */
 
@@ -99,16 +99,16 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_TIM1_Init();
-  MX_ADC1_Init();
   MX_TIM2_Init();
   MX_USART1_UART_Init();
   MX_SDIO_SD_Init();
   MX_FATFS_Init();
   MX_I2S2_Init();
-  MX_USB_DEVICE_Init();
+  MX_FSMC_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
+	
 	printf("System Init\r\n");
-	f_mount(&fs1, "", 1);
 	app_main();
 	
 
@@ -171,7 +171,6 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-// �ⲿ�жϻص��������и裩
 
 
 /* USER CODE END 4 */
@@ -184,14 +183,20 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+  volatile uint32_t delay;
+
   __disable_irq();
   while (1)
   {
+    HAL_GPIO_TogglePin(led_out_GPIO_Port, led_out_Pin);
+    for (delay = 0; delay < 300000U; delay++)
+    {
+      __NOP();
+    }
   }
   /* USER CODE END Error_Handler_Debug */
 }
-
-#ifdef  USE_FULL_ASSERT
+#ifdef USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
   *         where the assert_param error has occurred.

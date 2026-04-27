@@ -1,284 +1,213 @@
-#include "main.h"
+#include "app_main.h"
+
+#include "app_memory.h"
+#include "audio_player.h"
 #include "fatfs.h"
-#include "usb_device.h"
-#include "usbd_core.h"
-#include "usbd_storage_if.h"
-#include "minimp3.h"
 #include "i2s.h"
-#include "sdio.h"
+#include "lv_port_disp.h"
+#include "lv_port_indev.h"
+#include "lvgl.h"
+#include "player_ui.h"
 
-#define MP3_BUFFER_SIZE 2048
-#define PCM_BUF_SZ 1152 * 2
+#include <stdio.h>
 
-uint8_t mp3_buf[MP3_BUFFER_SIZE];
-int16_t pcm_dma_buf[2][PCM_BUF_SZ];
+#define APP_LVGL_PERIOD_MS        30U
+#define APP_AUDIO_LOW_LVGL_SKIP   1U
+#define APP_MONITOR_PERIOD_MS     2000U
 
-mp3dec_t mp3d;
-mp3dec_frame_info_t info;
+static APP_CCMRAM FATFS s_fs;
+static APP_CCMRAM audio_player_t s_player;
+static APP_CCMRAM audio_player_workmem_t s_audio_workmem;
+static APP_SRAM2 audio_player_dma_buffers_t s_audio_dma_buffers;
+static volatile uint8_t s_next_song_flag;
 
-int mp3_data_pos = 0;
-int mp3_data_remain = 0;
+volatile uint32_t g_app_phase = APP_PHASE_BOOT;
+volatile uint32_t g_app_last_cmd;
 
-volatile uint8_t dma_buf_idx = 0;       // 当前DMA播放的缓冲区索引
-volatile uint8_t pcm_ready[2] = {0};    // 每个缓冲区是否准备好了
-volatile uint8_t is_dma_idle = 1;       // DMA是否空闲
+static uint32_t s_last_monitor_tick;
+static uint32_t s_last_heartbeat_tick;
+static uint32_t s_last_lvgl_tick;
+static uint32_t s_loop_count;
+static uint32_t s_lvgl_skip_count;
 
-FRESULT res;
-FIL file;
-UINT bytesRead;
-const char* filename = "wuya.mp3";  // 替换为你的文件名
-uint8_t next_song_flag = 0;
-// 文件系统对象
-FATFS fs;
-// 文件信息对象
-FILINFO fno;
-// 目录对象
-DIR dir;
-
-int current_song_index = 0;
-int is_wav = 0;  // 是否是WAV格式
-
-uint32_t now_time;
-uint32_t err_time;
-// 播放列表
-const char* playlist[] = {
-//    "wuya.mp3",
-//    "tanguzhi.mp3",
-    "HONGCH~1.mp3",
-    "TONGHU~1.mp3",
-		"M50000~2.mp3",
-		"M500001iYB5M0X9yvq.mp3",
-		"M500003BhkKY255LvY.mp3"
-};
-
-int playlist_len = sizeof(playlist);
-// 列出SD卡中的文件
-
-int is_wav_file(const char* filename)
+static void App_HandleUiCommand(player_ui_cmd_t cmd)
 {
-    const char* ext = strrchr(filename, '.');
-    if (!ext) return 0;
-    return (strcasecmp(ext, ".wav") == 0);
-}
-void list_files_in_sd_card(void) {
-    FRESULT res;
+    g_app_last_cmd = (uint32_t)cmd;
 
-    // 打开SD卡根目录
-    res = f_opendir(&dir, "/");
-    if (res != FR_OK) {
-        printf("打开目录失败: %d\n", res);
-        return;
-    }
-
-    printf("SD卡文件列表:\n");
-
-    // 遍历目录中的文件
-    for (;;) {
-        res = f_readdir(&dir, &fno);  // 读取目录项
-        if (res != FR_OK || fno.fname[0] == 0) {
-            break;  // 如果没有更多文件或目录项，则退出
-        }
-
-        if (fno.fname[0] == '.') {
-            continue;  // 忽略 . 和 .. 目录
-        }
-
-        if (!(fno.fattrib & AM_DIR)) {
-            printf("文件: %s\r\n", fno.fname);  // 打印文件名
-        } else {
-            printf("目录: %s\r\n", fno.fname);  // 打印目录名
-        }
-    }
-
-    // 关闭目录
-    f_closedir(&dir);
-}
-// 播放 WAV 文件帧
-void WAV_PlayLoop(void)
-{
-    if (is_dma_idle) {
-        UINT wavRead = 0;
-        f_read(&file, pcm_dma_buf[dma_buf_idx], PCM_BUF_SZ * sizeof(int16_t), &wavRead);
-        if (wavRead == 0) {
-            printf("WAV播放结束\r\n");
-            f_close(&file);
-            return;
-        }
-        HAL_I2S_Transmit_DMA(&hi2s2, (uint16_t *)pcm_dma_buf[dma_buf_idx], wavRead / 2);  // 2字节一个样本
-        dma_buf_idx ^= 1;
-        is_dma_idle = 0;
-    }
-}
-int samples = 0;
-// 初始化并开始播放
-void MP3_StartPlayback(void)
-{
-    f_mount(&fs, "", 1);
-    res = f_open(&file, playlist[current_song_index], FA_READ);
-    if (res != FR_OK) {
-        printf("打开音频文件失败\r\n");
-        return;
-    }
-
-    is_wav = is_wav_file(playlist[current_song_index]);
-    if (is_wav) {
-        UINT discard;
-        f_read(&file, mp3_buf, 44, &discard);  // 跳过WAV头44字节
-        WAV_PlayLoop();  // 启动首次播放
-        return;
-    }
-
-    mp3dec_init(&mp3d);
-    mp3_data_pos = 0;
-    mp3_data_remain = 0;
-		 now_time = HAL_GetTick();
-    f_read(&file, mp3_buf, MP3_BUFFER_SIZE, &bytesRead);
-		uint32_t err_time =HAL_GetTick() -  now_time  ;
-		printf("%d\r\n",err_time);
-    mp3_data_remain = bytesRead;
-
-     samples = mp3dec_decode_frame(&mp3d, mp3_buf, mp3_data_remain, pcm_dma_buf[0], &info);
-    if (samples > 0 && info.frame_bytes > 0) {
-        mp3_data_pos += info.frame_bytes;
-        mp3_data_remain -= info.frame_bytes;
-
-        pcm_ready[0] = 1;
-        HAL_I2S_Transmit_DMA(&hi2s2, (uint16_t *)pcm_dma_buf[0], samples * info.channels);
-        is_dma_idle = 0;
+    switch (cmd) {
+    case PLAYER_UI_CMD_PREVIOUS:
+        AudioPlayer_Previous(&s_player);
+        break;
+    case PLAYER_UI_CMD_TOGGLE_PAUSE:
+        AudioPlayer_TogglePause(&s_player);
+        break;
+    case PLAYER_UI_CMD_NEXT:
+        AudioPlayer_Next(&s_player);
+        break;
+    case PLAYER_UI_CMD_NONE:
+    default:
+        break;
     }
 }
 
-void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s)
+static uint8_t App_AudioLow(void)
 {
-    pcm_ready[dma_buf_idx] = 0;
-    dma_buf_idx ^= 1;
-
-    uint8_t next_buf = dma_buf_idx;
-
-    if (pcm_ready[next_buf]) {
-        int play_samples = PCM_BUF_SZ / info.channels;
-
-        HAL_I2S_Transmit_DMA(&hi2s2, (uint16_t *)pcm_dma_buf[next_buf], play_samples * info.channels);
-        is_dma_idle = 0;
-    } else {
-        is_dma_idle = 1;  // 如果没准备好，只能等待主循环解码
-    }
+#if APP_AUDIO_LOW_LVGL_SKIP
+    return AudioPlayer_IsBufferLow(&s_player);
+#else
+    return 0U;
+#endif
 }
-void MP3_SwitchSong(void)
+
+static void App_RunLvglIfAllowed(void)
 {
-    f_close(&file);
-    HAL_Delay(10);
-    current_song_index = (current_song_index + 1) % playlist_len;
+    uint32_t now_tick = HAL_GetTick();
 
-    res = f_open(&file, playlist[current_song_index], FA_READ);
-    if (res != FR_OK) {
-        printf("打开失败: %s\r\n", playlist[current_song_index]);
+    if ((now_tick - s_last_lvgl_tick) < APP_LVGL_PERIOD_MS) {
         return;
     }
 
-    is_wav = is_wav_file(playlist[current_song_index]);
-    if (is_wav) {
-        UINT discard;
-        f_read(&file, mp3_buf, 44, &discard);  // 跳过WAV头
-        dma_buf_idx = 0;
-        is_dma_idle = 1;
-        WAV_PlayLoop();
+    if (App_AudioLow()) {
+        s_lvgl_skip_count++;
         return;
     }
 
-    // MP3初始化
-    mp3dec_init(&mp3d);
-    mp3_data_pos = 0;
-    mp3_data_remain = 0;
-    dma_buf_idx = 0;
-    pcm_ready[0] = 0;
-    pcm_ready[1] = 0;
-    is_dma_idle = 1;
-
-    f_read(&file, mp3_buf, MP3_BUFFER_SIZE, &bytesRead);
-    mp3_data_remain = bytesRead;
-
-     samples = mp3dec_decode_frame(&mp3d, mp3_buf, mp3_data_remain, pcm_dma_buf[0], &info);
-    if (samples > 0 && info.frame_bytes > 0) {
-        mp3_data_pos += info.frame_bytes;
-        mp3_data_remain -= info.frame_bytes;
-        pcm_ready[0] = 1;
-        HAL_I2S_Transmit_DMA(&hi2s2, (uint16_t *)pcm_dma_buf[0], samples * info.channels);
-        is_dma_idle = 0;
-    }
+    s_last_lvgl_tick = now_tick;
+    g_app_phase = APP_PHASE_LV_TIMER;
+    lv_timer_handler();
 }
-// 主循环解码并加载缓冲区
-void MP3_PlayLoop(void)
+
+static void App_MonitorUpdate(void)
 {
-    if (is_wav) {
-        WAV_PlayLoop();
+    uint32_t now_tick = HAL_GetTick();
+    uint32_t elapsed_tick;
+    uint32_t loop_per_s;
+    uint32_t underflows;
+    uint32_t dma_cplt;
+    lv_port_touch_debug_t touch;
+    lv_mem_monitor_t mem;
+
+    s_loop_count++;
+
+    if ((now_tick - s_last_heartbeat_tick) >= 500U) {
+        s_last_heartbeat_tick = now_tick;
+        HAL_GPIO_TogglePin(led_out_GPIO_Port, led_out_Pin);
+    }
+
+    if ((now_tick - s_last_monitor_tick) < APP_MONITOR_PERIOD_MS) {
         return;
     }
 
-    if (mp3_data_remain < MP3_BUFFER_SIZE / 2) {
-        memmove(mp3_buf, mp3_buf + mp3_data_pos, mp3_data_remain);
-        mp3_data_pos = 0;
-        f_read(&file, mp3_buf + mp3_data_remain, MP3_BUFFER_SIZE - mp3_data_remain, &bytesRead);
-        mp3_data_remain += bytesRead;
-        if (bytesRead == 0) {
-						MP3_SwitchSong();
-            return;
-        }
+    if (App_AudioLow()) {
+        return;
     }
 
-    uint8_t idle_buf = dma_buf_idx ^ 1;
-
-    if (!pcm_ready[idle_buf]) {
-         samples = mp3dec_decode_frame(&mp3d, mp3_buf + mp3_data_pos, mp3_data_remain, pcm_dma_buf[idle_buf], &info);
-			//	printf("samples=%d,frame_bytes=%d\r\n",samples,info.frame_bytes);
-        if (samples > 0 && info.frame_bytes > 0) {
-            mp3_data_pos += info.frame_bytes;
-            mp3_data_remain -= info.frame_bytes;
-            pcm_ready[idle_buf] = 1;
-        } else {
-            mp3_data_pos++;
-            mp3_data_remain--;
-        }
+    elapsed_tick = now_tick - s_last_monitor_tick;
+    if (elapsed_tick == 0U) {
+        elapsed_tick = 1U;
     }
+    loop_per_s = (s_loop_count * 1000U) / elapsed_tick;
+    s_last_monitor_tick = now_tick;
+    underflows = AudioPlayer_TakeUnderflowCount(&s_player);
+    dma_cplt = AudioPlayer_TakeDmaCpltCount(&s_player);
+    lv_port_indev_get_touch_debug(&touch);
+    lv_mem_monitor(&mem);
 
-    if (is_dma_idle && pcm_ready[dma_buf_idx]) {
-        int play_samples = PCM_BUF_SZ / info.channels;
-        HAL_I2S_Transmit_DMA(&hi2s2, (uint16_t *)pcm_dma_buf[dma_buf_idx], play_samples * info.channels);
-        is_dma_idle = 0;
-    }
+    printf("Alive t=%lu loop/s=%lu player=%s buf=%u/%u dma=%lu underflow=%lu "
+           "lvskip=%lu touch=%s id=0x%02X st=%u p=%u raw=%d,%d xy=%d,%d ok=%lu fail=%lu "
+           "lv_mem=%lu/%lu max=%lu%% frag=%u%%\r\n",
+           now_tick,
+           loop_per_s,
+           AudioPlayer_StateName(s_player.state),
+           (unsigned int)AudioPlayer_GetPcmBufferedCount(&s_player),
+           (unsigned int)AUDIO_PLAYER_PCM_BUF_COUNT,
+           dma_cplt,
+           underflows,
+           s_lvgl_skip_count,
+           touch.touch_ready ? "OK" : "NO",
+           touch.chip_id,
+           touch.i2c_status,
+           touch.pressed,
+           (int)touch.raw_x,
+           (int)touch.raw_y,
+           (int)touch.x,
+           (int)touch.y,
+           touch.read_ok_count,
+           touch.read_fail_count,
+           mem.free_size,
+           mem.total_size,
+           (unsigned long)mem.used_pct,
+           (unsigned int)mem.frag_pct);
+
+    s_loop_count = 0;
+    s_lvgl_skip_count = 0;
 }
 
 int app_main(void)
 {
-    // 挂载文件系统
-    if (f_mount(&fs, "", 1) != FR_OK) {
-        printf("SD卡挂载失败\n");
-        return 1;
+    FRESULT res;
+
+    g_app_phase = APP_PHASE_BOOT;
+
+    lv_init();
+    lv_port_disp_init();
+    lv_port_indev_init();
+
+    AudioPlayer_Init(&s_player, &hi2s2, &s_audio_workmem, &s_audio_dma_buffers);
+    PlayerUi_Init(&s_player);
+
+    res = f_mount(&s_fs, "", 1);
+    if (res != FR_OK) {
+        printf("SD mount failed: %d\r\n", res);
+        PlayerUi_SetStatus("SD mount failed");
+    } else {
+        res = AudioPlayer_BuildPlaylist(&s_player, "/");
+        if (res != FR_OK) {
+            printf("Build playlist failed: %d\r\n", res);
+            PlayerUi_SetStatus("Playlist scan failed");
+        } else if (s_player.playlist_len == 0U) {
+            printf("No MP3/WAV files found\r\n");
+            PlayerUi_SetStatus("No MP3/WAV files found");
+        } else {
+            printf("Found %u audio files\r\n", (unsigned int)s_player.playlist_len);
+            PlayerUi_SetStatus("");
+            AudioPlayer_Start(&s_player);
+        }
     }
 
-    // 列出SD卡中的文件
-    list_files_in_sd_card();
+    while (1) {
+        if (s_next_song_flag) {
+            s_next_song_flag = 0;
+            AudioPlayer_Next(&s_player);
+        }
 
+        g_app_phase = APP_PHASE_AUDIO_PROCESS;
+        AudioPlayer_Process(&s_player);
 
-		MP3_StartPlayback();
+        App_RunLvglIfAllowed();
 
-		
-    while(1)
-    {
-			MP3_PlayLoop();
-			if (next_song_flag) {
-				next_song_flag = 0;
-				MP3_SwitchSong();
-			}
-    
-		}
-		return 0;
+        g_app_phase = APP_PHASE_UI_CMD;
+        App_HandleUiCommand(PlayerUi_TakeCommand());
+
+        g_app_phase = APP_PHASE_AUDIO_PROCESS;
+        AudioPlayer_Process(&s_player);
+
+        if (!App_AudioLow()) {
+            g_app_phase = APP_PHASE_UI_UPDATE;
+            PlayerUi_Update(&s_player);
+        }
+
+        g_app_phase = APP_PHASE_MONITOR;
+        App_MonitorUpdate();
+
+        g_app_phase = APP_PHASE_IDLE;
+    }
 }
-// 按键中断回调函数
+
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    if (GPIO_Pin == GPIO_PIN_0) {  // 如果是按钮按下
-				next_song_flag = 1;
-        HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_2);  // 切换LED状态
+    if (GPIO_Pin == GPIO_PIN_0 || GPIO_Pin == GPIO_PIN_1) {
+        s_next_song_flag = 1;
+        HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_2);
     }
 }

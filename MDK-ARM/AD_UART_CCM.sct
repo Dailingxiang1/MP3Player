@@ -1,0 +1,42 @@
+; *************************************************************
+; MP3Player-Plus custom scatter file
+; STM32F407VE: Flash 512KB, SRAM1 112KB, SRAM2 16KB, CCMRAM 64KB
+; CCMRAM is CPU-only. Do not place peripheral DMA buffers there.
+; *************************************************************
+
+LR_IROM1 0x08000000 0x00080000  {    ; load region size_region
+  ER_IROM1 0x08000000 0x00080000  {  ; load address = execution address
+   *.o (RESET, +First)
+   *(InRoot$$Sections)
+   .ANY (+RO)
+   .ANY (+XO)
+  }
+
+  RW_CCMRAM 0x10000000 0x00010000  { ; CPU-only fast RAM
+   *(CCMRAM)
+   *(CCMRAM.*)
+   *(.bss.ccmram)
+   *(.bss.ccmram.*)
+   *(.ccmram)
+   *(.ccmram.*)
+  }
+
+  RW_IRAM2 0x2001C000 0x00004000  {  ; SRAM2, DMA accessible
+   *(SRAM2)
+   *(SRAM2.*)
+   *(.bss.sram2)
+   *(.bss.sram2.*)
+   *(.sram2)
+   *(.sram2.*)
+  }
+
+  RW_IRAM1 0x20000000 0x0001C000  {  ; SRAM1, DMA accessible
+   *(DMA_RAM)
+   *(DMA_RAM.*)
+   *(.bss.dma_ram)
+   *(.bss.dma_ram.*)
+   *(.dma_ram)
+   *(.dma_ram.*)
+   .ANY (+RW +ZI)
+  }
+}
