@@ -11,7 +11,7 @@
 
 #include <stdio.h>
 
-#define APP_LVGL_PERIOD_MS        30U
+#define APP_LVGL_PERIOD_MS        50U
 #define APP_AUDIO_LOW_LVGL_SKIP   1U
 #define APP_MONITOR_PERIOD_MS     2000U
 

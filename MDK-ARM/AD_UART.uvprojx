@@ -2656,6 +2656,16 @@
               <FilePath>..\lvgl\src\font\lv_font_montserrat_14.c</FilePath>
             </File>
             <File>
+              <FileName>lv_font_montserrat_16.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\lvgl\src\font\lv_font_montserrat_16.c</FilePath>
+            </File>
+            <File>
+              <FileName>lv_font_montserrat_20.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\lvgl\src\font\lv_font_montserrat_20.c</FilePath>
+            </File>
+            <File>
               <FileName>lv_hal_disp.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\lvgl\src\hal\lv_hal_disp.c</FilePath>
@@ -2774,6 +2784,11 @@
               <FileName>lv_utils.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\lvgl\src\misc\lv_utils.c</FilePath>
+            </File>
+            <File>
+              <FileName>lv_arc.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\lvgl\src\widgets\lv_arc.c</FilePath>
             </File>
             <File>
               <FileName>lv_bar.c</FileName>
