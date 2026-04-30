@@ -110,6 +110,20 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 }
 
 /* USER CODE BEGIN 1 */
+
+//#pragma import(__use_no_semihosting)
+
+//struct __FILE {
+//    int handle;
+//};
+
+//FILE __stdout;
+
+//// 定义 _sys_exit 以避免使用半主机模式
+//void _sys_exit(int x) {
+//    x = x;
+//}
+
 void UART_Printf(UART_HandleTypeDef *huart, const char *fmt, ...)
 {
     char buffer[128]; // ������Ҫ������С

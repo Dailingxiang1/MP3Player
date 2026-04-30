@@ -22,7 +22,6 @@
 #include "stm32f4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "lvgl.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -89,8 +88,8 @@ void Fault_HandlerC(uint32_t *fault_stack, uint32_t fault_id)
   g_fault_afsr = SCB->AFSR;
   g_fault_bfar = SCB->BFAR;
   g_fault_mmfar = SCB->MMFAR;
-  g_fault_app_phase = g_app_phase;
-  g_fault_last_cmd = g_app_last_cmd;
+  //g_fault_app_phase = g_app_phase;
+  //g_fault_last_cmd = g_app_last_cmd;
 
   if (fault_stack != 0) {
     g_fault_sp = (uint32_t)fault_stack;
@@ -123,9 +122,50 @@ void Fault_HandlerC(uint32_t *fault_stack, uint32_t fault_id)
 
 /* External variables --------------------------------------------------------*/
 extern DMA_HandleTypeDef hdma_spi2_tx;
+extern I2S_HandleTypeDef hi2s2;
 extern DMA_HandleTypeDef hdma_sdio_rx;
-/* USER CODE BEGIN EV */
+extern DMA_HandleTypeDef hdma_sdio_tx;
+extern SD_HandleTypeDef hsd;
+extern TIM_HandleTypeDef htim14;
 
+/* USER CODE BEGIN EV */
+void hard_fault_handler_c(unsigned int * svc_args)
+{
+    unsigned int stacked_r0;
+    unsigned int stacked_r1;
+    unsigned int stacked_r2;
+    unsigned int stacked_r3;
+    unsigned int stacked_r12;
+    unsigned int stacked_lr;
+    unsigned int stacked_pc;
+    unsigned int stacked_psr;
+
+    stacked_r0 = ((unsigned long) svc_args[0]);
+    stacked_r1 = ((unsigned long) svc_args[1]);
+    stacked_r2 = ((unsigned long) svc_args[2]);
+    stacked_r3 = ((unsigned long) svc_args[3]);
+
+    stacked_r12 = ((unsigned long) svc_args[4]);
+    stacked_lr = ((unsigned long) svc_args[5]);
+    stacked_pc = ((unsigned long) svc_args[6]);
+    stacked_psr = ((unsigned long) svc_args[7]);
+
+    printf("\r\n--- Hard Fault Detected ---\r\n");
+    printf("R0       = 0x%08x\r\n", stacked_r0);
+    printf("R1       = 0x%08x\r\n", stacked_r1);
+    printf("R2       = 0x%08x\r\n", stacked_r2);
+    printf("R3       = 0x%08x\r\n", stacked_r3);
+    printf("R12      = 0x%08x\r\n", stacked_r12);
+    printf("LR [R14] = 0x%08x (Return Address)\r\n", stacked_lr);
+    printf("PC [R15] = 0x%08x (Error Code Location)\r\n", stacked_pc);
+    printf("PSR      = 0x%08x\r\n", stacked_psr);
+    
+    // 如果是由于非法访问内存，查看这个寄存器（针对 Cortex-M3/M4/M7）
+    // printf("BFAR     = 0x%08x\r\n", (*((volatile unsigned long *)(0xE000ED38))));
+    // printf("CFSR     = 0x%08x\r\n", (*((volatile unsigned long *)(0xE000ED28))));
+
+    while (1);
+}
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -149,70 +189,61 @@ void NMI_Handler(void)
 /**
   * @brief This function handles Hard fault interrupt.
   */
-__asm void HardFault_Handler(void)
+void HardFault_Handler(void)
 {
-  EXTERN Fault_HandlerC
-  TST LR, #4
-  ITE EQ
-  MRSEQ R0, MSP
-  MRSNE R0, PSP
-  MOV R1, #1
-  B Fault_HandlerC
+  /* USER CODE BEGIN HardFault_IRQn 0 */
+
+  /* USER CODE END HardFault_IRQn 0 */
+  while (1)
+  {
+    /* USER CODE BEGIN W1_HardFault_IRQn 0 */
+    /* USER CODE END W1_HardFault_IRQn 0 */
+  }
 }
 
 /**
   * @brief This function handles Memory management fault.
   */
-__asm void MemManage_Handler(void)
+void MemManage_Handler(void)
 {
-  EXTERN Fault_HandlerC
-  TST LR, #4
-  ITE EQ
-  MRSEQ R0, MSP
-  MRSNE R0, PSP
-  MOV R1, #2
-  B Fault_HandlerC
+  /* USER CODE BEGIN MemoryManagement_IRQn 0 */
+
+  /* USER CODE END MemoryManagement_IRQn 0 */
+  while (1)
+  {
+    /* USER CODE BEGIN W1_MemoryManagement_IRQn 0 */
+    /* USER CODE END W1_MemoryManagement_IRQn 0 */
+  }
 }
 
 /**
   * @brief This function handles Pre-fetch fault, memory access fault.
   */
-__asm void BusFault_Handler(void)
+void BusFault_Handler(void)
 {
-  EXTERN Fault_HandlerC
-  TST LR, #4
-  ITE EQ
-  MRSEQ R0, MSP
-  MRSNE R0, PSP
-  MOV R1, #3
-  B Fault_HandlerC
+  /* USER CODE BEGIN BusFault_IRQn 0 */
+
+  /* USER CODE END BusFault_IRQn 0 */
+  while (1)
+  {
+    /* USER CODE BEGIN W1_BusFault_IRQn 0 */
+    /* USER CODE END W1_BusFault_IRQn 0 */
+  }
 }
 
 /**
   * @brief This function handles Undefined instruction or illegal state.
   */
-__asm void UsageFault_Handler(void)
+void UsageFault_Handler(void)
 {
-  EXTERN Fault_HandlerC
-  TST LR, #4
-  ITE EQ
-  MRSEQ R0, MSP
-  MRSNE R0, PSP
-  MOV R1, #4
-  B Fault_HandlerC
-}
+  /* USER CODE BEGIN UsageFault_IRQn 0 */
 
-/**
-  * @brief This function handles System service call via SWI instruction.
-  */
-void SVC_Handler(void)
-{
-  /* USER CODE BEGIN SVCall_IRQn 0 */
-
-  /* USER CODE END SVCall_IRQn 0 */
-  /* USER CODE BEGIN SVCall_IRQn 1 */
-
-  /* USER CODE END SVCall_IRQn 1 */
+  /* USER CODE END UsageFault_IRQn 0 */
+  while (1)
+  {
+    /* USER CODE BEGIN W1_UsageFault_IRQn 0 */
+    /* USER CODE END W1_UsageFault_IRQn 0 */
+  }
 }
 
 /**
@@ -226,34 +257,6 @@ void DebugMon_Handler(void)
   /* USER CODE BEGIN DebugMonitor_IRQn 1 */
 
   /* USER CODE END DebugMonitor_IRQn 1 */
-}
-
-/**
-  * @brief This function handles Pendable request for system service.
-  */
-void PendSV_Handler(void)
-{
-  /* USER CODE BEGIN PendSV_IRQn 0 */
-
-  /* USER CODE END PendSV_IRQn 0 */
-  /* USER CODE BEGIN PendSV_IRQn 1 */
-
-  /* USER CODE END PendSV_IRQn 1 */
-}
-
-/**
-  * @brief This function handles System tick timer.
-  */
-void SysTick_Handler(void)
-{
-  /* USER CODE BEGIN SysTick_IRQn 0 */
-
-  /* USER CODE END SysTick_IRQn 0 */
-  HAL_IncTick();
-  /* USER CODE BEGIN SysTick_IRQn 1 */
-  lv_tick_inc(1);
-
-  /* USER CODE END SysTick_IRQn 1 */
 }
 
 /******************************************************************************/
@@ -306,6 +309,48 @@ void DMA1_Stream4_IRQHandler(void)
 }
 
 /**
+  * @brief This function handles SPI2 global interrupt.
+  */
+void SPI2_IRQHandler(void)
+{
+  /* USER CODE BEGIN SPI2_IRQn 0 */
+
+  /* USER CODE END SPI2_IRQn 0 */
+  HAL_I2S_IRQHandler(&hi2s2);
+  /* USER CODE BEGIN SPI2_IRQn 1 */
+
+  /* USER CODE END SPI2_IRQn 1 */
+}
+
+/**
+  * @brief This function handles TIM8 trigger and commutation interrupts and TIM14 global interrupt.
+  */
+void TIM8_TRG_COM_TIM14_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM8_TRG_COM_TIM14_IRQn 0 */
+
+  /* USER CODE END TIM8_TRG_COM_TIM14_IRQn 0 */
+  HAL_TIM_IRQHandler(&htim14);
+  /* USER CODE BEGIN TIM8_TRG_COM_TIM14_IRQn 1 */
+
+  /* USER CODE END TIM8_TRG_COM_TIM14_IRQn 1 */
+}
+
+/**
+  * @brief This function handles SDIO global interrupt.
+  */
+void SDIO_IRQHandler(void)
+{
+  /* USER CODE BEGIN SDIO_IRQn 0 */
+
+  /* USER CODE END SDIO_IRQn 0 */
+  HAL_SD_IRQHandler(&hsd);
+  /* USER CODE BEGIN SDIO_IRQn 1 */
+
+  /* USER CODE END SDIO_IRQn 1 */
+}
+
+/**
   * @brief This function handles DMA2 stream3 global interrupt.
   */
 void DMA2_Stream3_IRQHandler(void)
@@ -317,6 +362,20 @@ void DMA2_Stream3_IRQHandler(void)
   /* USER CODE BEGIN DMA2_Stream3_IRQn 1 */
 
   /* USER CODE END DMA2_Stream3_IRQn 1 */
+}
+
+/**
+  * @brief This function handles DMA2 stream6 global interrupt.
+  */
+void DMA2_Stream6_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA2_Stream6_IRQn 0 */
+
+  /* USER CODE END DMA2_Stream6_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_sdio_tx);
+  /* USER CODE BEGIN DMA2_Stream6_IRQn 1 */
+
+  /* USER CODE END DMA2_Stream6_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */

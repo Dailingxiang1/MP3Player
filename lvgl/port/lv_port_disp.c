@@ -27,7 +27,7 @@
     #define MY_DISP_VER_RES    LCD_HEIGHT
 #endif
 
-#define DISP_BUF_HEIGHT    6
+#define DISP_BUF_HEIGHT    16
 
 /**********************
  * TYPEDEFS
@@ -43,9 +43,9 @@ static void disp_flush(lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_colo
 /**********************
  * STATIC VARIABLES
  **********************/
-static APP_CCMRAM lv_disp_draw_buf_t s_draw_buf_dsc;
-static APP_CCMRAM lv_color_t s_draw_buf_1[MY_DISP_HOR_RES * DISP_BUF_HEIGHT];
-static APP_CCMRAM lv_disp_drv_t s_disp_drv;
+static APP_SRAM1 lv_disp_draw_buf_t s_draw_buf_dsc;
+static APP_SRAM1 lv_color_t s_draw_buf_1[MY_DISP_HOR_RES * DISP_BUF_HEIGHT];
+static APP_SRAM1 lv_disp_drv_t s_disp_drv;
 
 /**********************
  * MACROS
@@ -141,14 +141,25 @@ static void disp_flush(lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_colo
             }
 
             color_p += (y1 - orig_y1) * orig_w + (x1 - orig_x1);
-            while (y1 <= y2) {
+            if (x1 == orig_x1 && x2 == area->x2) {
+                /* Fast path: the clipped area keeps the original row stride, so the
+                 * pixels are contiguous and can be pushed in one LCD transaction.
+                 */
                 LCD_DrawRGB565Image((uint16_t)x1,
                                     (uint16_t)y1,
                                     (uint16_t)x2,
-                                    (uint16_t)y1,
+                                    (uint16_t)y2,
                                     (const uint16_t *)color_p);
-                color_p += orig_w;
-                y1++;
+            } else {
+                while (y1 <= y2) {
+                    LCD_DrawRGB565Image((uint16_t)x1,
+                                        (uint16_t)y1,
+                                        (uint16_t)x2,
+                                        (uint16_t)y1,
+                                        (const uint16_t *)color_p);
+                    color_p += orig_w;
+                    y1++;
+                }
             }
         }
     }

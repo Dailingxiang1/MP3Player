@@ -40,16 +40,29 @@ typedef struct {
     uint32_t data_left;
 } audio_wav_info_t;
 
-/* CPU-only working memory. Current FatFs SD path uses polling reads, so this
- * buffer is safe in CCMRAM. If SDIO DMA file reads are enabled later, move
- * stream_buf back to APP_DMA_RAM/SRAM.
+/* 音频压缩流工作区。
+ *
+ * 重要说明：
+ * 1. 这里的 stream_buf 会作为 FatFs/f_read() 的目标缓冲区之一；
+ * 2. 当前工程的 SD 卡底层已经启用了 SDIO DMA RX；
+ * 3. 因此该对象必须放在 DMA 可访问的 SRAM1/SRAM2 中，
+ *    绝对不能放在 CCMRAM。
+ *
+ * 否则会出现：
+ * - 读文件偶发异常
+ * - 解码输入流被破坏
+ * - 主观听感表现为卡顿、炸音、音质明显变差
  */
 typedef struct {
     uint8_t stream_buf[AUDIO_PLAYER_STREAM_BUF_SZ];
     char playlist[AUDIO_PLAYER_MAX_SONGS][AUDIO_PLAYER_MAX_PATH_LEN];
 } audio_player_workmem_t;
 
-/* I2S DMA reads pcm_buf directly. This object must stay in SRAM1/SRAM2, not CCMRAM. */
+/* PCM 播放缓冲。
+ *
+ * I2S TX DMA 会直接从这里取数，因此也必须位于 DMA 可访问 SRAM 中。
+ * 结合你当前工程的内存规划，更推荐把它放到 SRAM1。
+ */
 typedef struct {
     int16_t pcm_buf[AUDIO_PLAYER_PCM_BUF_COUNT][AUDIO_PLAYER_PCM_SAMPLES];
 } audio_player_dma_buffers_t;

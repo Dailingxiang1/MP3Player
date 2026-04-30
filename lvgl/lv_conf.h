@@ -341,11 +341,11 @@
 
 /*Compiler prefix for a big array declaration in RAM*/
 #if defined(__CC_ARM)
-#define LV_ATTRIBUTE_LARGE_RAM_ARRAY __attribute__((section("CCMRAM"), zero_init, aligned(4)))
+#define LV_ATTRIBUTE_LARGE_RAM_ARRAY __attribute__((section("SRAM1"), zero_init, aligned(4)))
 #elif defined(__ARMCC_VERSION)
-#define LV_ATTRIBUTE_LARGE_RAM_ARRAY __attribute__((section(".bss.ccmram"), aligned(4)))
+#define LV_ATTRIBUTE_LARGE_RAM_ARRAY __attribute__((section(".bss.sram1"), aligned(4)))
 #elif defined(__GNUC__)
-#define LV_ATTRIBUTE_LARGE_RAM_ARRAY __attribute__((section(".bss.ccmram"), aligned(4)))
+#define LV_ATTRIBUTE_LARGE_RAM_ARRAY __attribute__((section(".bss.sram1"), aligned(4)))
 #else
 #define LV_ATTRIBUTE_LARGE_RAM_ARRAY
 #endif
@@ -373,9 +373,9 @@
 #define LV_FONT_MONTSERRAT_10 0
 #define LV_FONT_MONTSERRAT_12 0
 #define LV_FONT_MONTSERRAT_14 1
-#define LV_FONT_MONTSERRAT_16 0
+#define LV_FONT_MONTSERRAT_16 1
 #define LV_FONT_MONTSERRAT_18 0
-#define LV_FONT_MONTSERRAT_20 0
+#define LV_FONT_MONTSERRAT_20 1
 #define LV_FONT_MONTSERRAT_22 0
 #define LV_FONT_MONTSERRAT_24 0
 #define LV_FONT_MONTSERRAT_26 0
@@ -479,7 +479,7 @@
 
 /*Documentation of the widgets: https://docs.lvgl.io/latest/en/html/widgets/index.html*/
 
-#define LV_USE_ARC        0
+#define LV_USE_ARC        1
 
 #define LV_USE_BAR        1
 
