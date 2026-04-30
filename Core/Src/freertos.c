@@ -25,7 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "../../SRC/audio_app.h"
+#include "app_main.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -35,6 +35,19 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+/* AppMain 任务同时承载：
+ * 1. LVGL 初始化与刷新
+ * 2. player_ui 页面逻辑
+ * 3. audio_player 音频主状态机
+ *
+ * 因此栈先给得保守一些，等后续整体稳定后再依据栈水位回收。
+ */
+#define APP_MAIN_TASK_STACK_WORDS   4096U
+
+/* 这个任务就是“应用主线程”，需要比普通后台任务高，
+ * 但又不抢占内核关键路径，因此放在较高优先级即可。
+ */
+#define APP_MAIN_TASK_PRIORITY      (configMAX_PRIORITIES - 3)
 
 /* USER CODE END PD */
 
@@ -57,6 +70,7 @@ const osThreadAttr_t defaultTask_attributes = {
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
+static void AppMainTask(void *argument);
 
 /* USER CODE END FunctionPrototypes */
 
@@ -91,11 +105,19 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
-  /* creation of defaultTask */
-  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+  /* defaultTask 本轮不再创建，直接切入成熟的 MyApp 主循环 */
 
   /* USER CODE BEGIN RTOS_THREADS */
-  AudioApp_CreateTasks();
+  if (xTaskCreate(AppMainTask,
+                  "AppMain",
+                  APP_MAIN_TASK_STACK_WORDS,
+                  NULL,
+                  APP_MAIN_TASK_PRIORITY,
+                  NULL) != pdPASS)
+  {
+    printf("AppMain task create failed\r\n");
+    Error_Handler();
+  }
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -124,6 +146,22 @@ void StartDefaultTask(void *argument)
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
+
+/* FreeRTOS 任务包装层：
+ * - app_main() 内部已经包含成熟的播放器 + LVGL + UI 主循环
+ * - 这里仅负责把它挂到 RTOS 任务中运行
+ */
+static void AppMainTask(void *argument)
+{
+  (void)argument;
+
+  (void)app_main();
+
+  /* 理论上 app_main() 不会返回。
+   * 若异常返回，则删除当前任务，避免继续执行未定义逻辑。
+   */
+  vTaskDelete(NULL);
+}
 
 /* USER CODE END Application */
 

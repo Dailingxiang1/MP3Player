@@ -19,18 +19,22 @@
 
 #if defined(__CC_ARM)
     #define APP_CCMRAM  __attribute__((section("CCMRAM"), zero_init, aligned(4)))
+    #define APP_SRAM1   __attribute__((section("SRAM1"), zero_init, aligned(4)))
     #define APP_SRAM2   __attribute__((section("SRAM2"), zero_init, aligned(4)))
     #define APP_DMA_RAM __attribute__((section("DMA_RAM"), zero_init, aligned(4)))
 #elif defined(__ARMCC_VERSION)
     #define APP_CCMRAM  __attribute__((section(".bss.ccmram"), aligned(4)))
+    #define APP_SRAM1   __attribute__((section(".bss.sram1"), aligned(4)))
     #define APP_SRAM2   __attribute__((section(".bss.sram2"), aligned(4)))
     #define APP_DMA_RAM __attribute__((section(".bss.dma_ram"), aligned(4)))
 #elif defined(__GNUC__)
     #define APP_CCMRAM  __attribute__((section(".bss.ccmram"), aligned(4)))
+    #define APP_SRAM1   __attribute__((section(".bss.sram1"), aligned(4)))
     #define APP_SRAM2   __attribute__((section(".bss.sram2"), aligned(4)))
     #define APP_DMA_RAM __attribute__((section(".bss.dma_ram"), aligned(4)))
 #else
     #define APP_CCMRAM
+    #define APP_SRAM1
     #define APP_SRAM2
     #define APP_DMA_RAM
 #endif

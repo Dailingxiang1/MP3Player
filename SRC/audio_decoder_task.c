@@ -231,6 +231,11 @@ void AudioDecodeTask(void *argument)
 
     AudioApp_ResetPipeline(ctx);
 
+    printf("[DEC] mp3 stream profile=%s buf=%lu read=%lu refill=%lu\r\n",
+           AUDIO_MP3_STREAM_PROFILE_TEXT,
+           (unsigned long)AUDIO_MP3_STREAM_BUFFER_SIZE,
+           (unsigned long)AUDIO_MP3_READ_CHUNK,
+           (unsigned long)AUDIO_MP3_REFILL_THRESHOLD);
     printf("[DEC] mount sd...\r\n");
     fres = f_mount(ctx->fs, SDPath, 1);
     if (fres != FR_OK)

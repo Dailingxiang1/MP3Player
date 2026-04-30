@@ -341,11 +341,11 @@
 
 /*Compiler prefix for a big array declaration in RAM*/
 #if defined(__CC_ARM)
-#define LV_ATTRIBUTE_LARGE_RAM_ARRAY __attribute__((section("CCMRAM"), zero_init, aligned(4)))
+#define LV_ATTRIBUTE_LARGE_RAM_ARRAY __attribute__((section("SRAM1"), zero_init, aligned(4)))
 #elif defined(__ARMCC_VERSION)
-#define LV_ATTRIBUTE_LARGE_RAM_ARRAY __attribute__((section(".bss.ccmram"), aligned(4)))
+#define LV_ATTRIBUTE_LARGE_RAM_ARRAY __attribute__((section(".bss.sram1"), aligned(4)))
 #elif defined(__GNUC__)
-#define LV_ATTRIBUTE_LARGE_RAM_ARRAY __attribute__((section(".bss.ccmram"), aligned(4)))
+#define LV_ATTRIBUTE_LARGE_RAM_ARRAY __attribute__((section(".bss.sram1"), aligned(4)))
 #else
 #define LV_ATTRIBUTE_LARGE_RAM_ARRAY
 #endif

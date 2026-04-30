@@ -43,9 +43,9 @@ static void disp_flush(lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_colo
 /**********************
  * STATIC VARIABLES
  **********************/
-static APP_CCMRAM lv_disp_draw_buf_t s_draw_buf_dsc;
-static APP_CCMRAM lv_color_t s_draw_buf_1[MY_DISP_HOR_RES * DISP_BUF_HEIGHT];
-static APP_CCMRAM lv_disp_drv_t s_disp_drv;
+static APP_SRAM1 lv_disp_draw_buf_t s_draw_buf_dsc;
+static APP_SRAM1 lv_color_t s_draw_buf_1[MY_DISP_HOR_RES * DISP_BUF_HEIGHT];
+static APP_SRAM1 lv_disp_drv_t s_disp_drv;
 
 /**********************
  * MACROS

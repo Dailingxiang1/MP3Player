@@ -13,9 +13,50 @@
 #define AUDIO_FILE_SCAN_PATH              "/"
 #define AUDIO_FILE_PATH_MAX_LEN           128U
 
-#define AUDIO_MP3_STREAM_BUFFER_SIZE      (16U * 1024U)
-#define AUDIO_MP3_READ_CHUNK              (4U * 1024U)
-#define AUDIO_MP3_REFILL_THRESHOLD        (4U * 1024U)
+/**
+ * @brief MP3 压缩流缓冲配置档位。
+ *
+ * 作用：
+ * - 只影响“读卡/补流”这一层，不会直接改变 I2S 播放时钟
+ * - 适合你现在做 8KB / 16KB A/B 对比测试
+ *
+ * 使用方法：
+ * - 想测 8KB：把 AUDIO_MP3_STREAM_PROFILE 改成 AUDIO_MP3_STREAM_PROFILE_8KB
+ * - 想测 16KB：把 AUDIO_MP3_STREAM_PROFILE 改成 AUDIO_MP3_STREAM_PROFILE_16KB
+ */
+#define AUDIO_MP3_STREAM_PROFILE_8KB      0U
+#define AUDIO_MP3_STREAM_PROFILE_16KB     1U
+
+/**
+ * @brief 当前选择的 MP3 流缓冲档位。
+ *
+ * 默认先保持你当前正在使用的 16KB，方便和之前行为保持一致。
+ */
+#define AUDIO_MP3_STREAM_PROFILE          AUDIO_MP3_STREAM_PROFILE_16KB
+
+#if (AUDIO_MP3_STREAM_PROFILE == AUDIO_MP3_STREAM_PROFILE_8KB)
+    /**
+     * 8KB 档：
+     * - 更适合做“缓冲变小会不会影响卡顿”的对比实验
+     * - 读卡更频繁，memmove/refill 触发也更频繁
+     */
+    #define AUDIO_MP3_STREAM_BUFFER_SIZE  (8U * 1024U)
+    #define AUDIO_MP3_READ_CHUNK          (2U * 1024U)
+    #define AUDIO_MP3_REFILL_THRESHOLD    (2U * 1024U)
+    #define AUDIO_MP3_STREAM_PROFILE_TEXT "8KB"
+#else
+    /**
+     * 16KB 档：
+     * - 读卡频率更低
+     * - 更偏稳妥
+     * - 也正是你之前“刚好占满 SRAM2”的版本
+     */
+    #define AUDIO_MP3_STREAM_BUFFER_SIZE  (16U * 1024U)
+    #define AUDIO_MP3_READ_CHUNK          (4U * 1024U)
+    #define AUDIO_MP3_REFILL_THRESHOLD    (4U * 1024U)
+    #define AUDIO_MP3_STREAM_PROFILE_TEXT "16KB"
+#endif
+
 #define AUDIO_MP3_SEARCH_GUARD            256
 
 #define AUDIO_PCM_BLOCK_COUNT             3U

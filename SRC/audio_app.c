@@ -450,7 +450,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     BaseType_t high_task_woken;
     uint32_t now_tick;
 
-    if (GPIO_Pin != GPIO_PIN_0)
+    if (GPIO_Pin != GPIO_PIN_1)
     {
         return;
     }
