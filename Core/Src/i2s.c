@@ -43,7 +43,7 @@ void MX_I2S2_Init(void)
   hi2s2.Init.Standard = I2S_STANDARD_PHILIPS;
   hi2s2.Init.DataFormat = I2S_DATAFORMAT_16B;
   hi2s2.Init.MCLKOutput = I2S_MCLKOUTPUT_DISABLE;
-  hi2s2.Init.AudioFreq = I2S_AUDIOFREQ_44K;
+  hi2s2.Init.AudioFreq = 44100;
   hi2s2.Init.CPOL = I2S_CPOL_LOW;
   hi2s2.Init.ClockSource = I2S_CLOCK_PLL;
   hi2s2.Init.FullDuplexMode = I2S_FULLDUPLEXMODE_DISABLE;
@@ -71,8 +71,8 @@ void HAL_I2S_MspInit(I2S_HandleTypeDef* i2sHandle)
   /** Initializes the peripherals clock
   */
     PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_I2S;
-    PeriphClkInitStruct.PLLI2S.PLLI2SN = 192;
-    PeriphClkInitStruct.PLLI2S.PLLI2SR = 2;
+    PeriphClkInitStruct.PLLI2S.PLLI2SN = 184;
+    PeriphClkInitStruct.PLLI2S.PLLI2SR = 3;
     if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
     {
       Error_Handler();
@@ -121,6 +121,9 @@ void HAL_I2S_MspInit(I2S_HandleTypeDef* i2sHandle)
 
     __HAL_LINKDMA(i2sHandle,hdmatx,hdma_spi2_tx);
 
+    /* I2S2 interrupt Init */
+    HAL_NVIC_SetPriority(SPI2_IRQn, 6, 0);
+    HAL_NVIC_EnableIRQ(SPI2_IRQn);
   /* USER CODE BEGIN SPI2_MspInit 1 */
 
   /* USER CODE END SPI2_MspInit 1 */
@@ -149,6 +152,9 @@ void HAL_I2S_MspDeInit(I2S_HandleTypeDef* i2sHandle)
 
     /* I2S2 DMA DeInit */
     HAL_DMA_DeInit(i2sHandle->hdmatx);
+
+    /* I2S2 interrupt Deinit */
+    HAL_NVIC_DisableIRQ(SPI2_IRQn);
   /* USER CODE BEGIN SPI2_MspDeInit 1 */
 
   /* USER CODE END SPI2_MspDeInit 1 */

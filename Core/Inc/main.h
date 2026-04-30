@@ -34,7 +34,6 @@ extern "C" {
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
-#include <app_main.h>
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
