@@ -16,7 +16,7 @@ static HAL_StatusTypeDef AudioPlay_StartBlockFromTask(audio_context_t *ctx, uint
     }
 
     ctx->pcm_state[block_index] = AUDIO_PCM_PLAYING;
-    ctx->active_index = block_index;
+    ctx->dma_active_block = block_index;
     ctx->dma_idle = 0U;
     taskEXIT_CRITICAL();
 
@@ -45,7 +45,7 @@ static HAL_StatusTypeDef AudioPlay_StartBlockFromIsr(audio_context_t *ctx, uint8
     }
 
     ctx->pcm_state[block_index] = AUDIO_PCM_PLAYING;
-    ctx->active_index = block_index;
+    ctx->dma_active_block = block_index;
     ctx->dma_idle = 0U;
 
     status = HAL_I2S_Transmit_DMA(ctx->i2s,
@@ -65,12 +65,12 @@ static void AudioPlay_TryStart(audio_context_t *ctx)
     uint8_t ready_count;
     int next_block;
 
-    if (ctx->run_state == AUDIO_TASK_STATE_ERROR)
+    if ((ctx->state == AUDIO_STATE_ERROR) || (ctx->state == AUDIO_STATE_PAUSE))
     {
         return;
     }
 
-    if (ctx->dma_idle == 0U)
+    if ((ctx->file_open == 0U) || (ctx->dma_idle == 0U))
     {
         return;
     }
@@ -81,12 +81,12 @@ static void AudioPlay_TryStart(audio_context_t *ctx)
         return;
     }
 
-    if ((ctx->decode_done == 0U) && (ready_count < AUDIO_PREFILL_BLOCKS))
+    if ((ctx->decode_done == 0U) && (ready_count < AUDIO_PLAY_PREFILL_BLOCKS))
     {
         return;
     }
 
-    next_block = AudioApp_FindNextReadyBlock(ctx, ctx->active_index);
+    next_block = AudioApp_FindNextReadyBlock(ctx, ctx->dma_active_block);
     if (next_block < 0)
     {
         return;
@@ -94,7 +94,7 @@ static void AudioPlay_TryStart(audio_context_t *ctx)
 
     if (AudioPlay_StartBlockFromTask(ctx, (uint8_t)next_block) == HAL_OK)
     {
-        ctx->run_state = AUDIO_TASK_STATE_PLAYING;
+        ctx->state = AUDIO_STATE_PLAY;
         if ((ctx->decode_done == 0U) && (AudioApp_PcmReadyCount(ctx) <= 1U))
         {
             ctx->low_buffer_count++;
@@ -102,19 +102,30 @@ static void AudioPlay_TryStart(audio_context_t *ctx)
     }
     else
     {
-        ctx->run_state = AUDIO_TASK_STATE_ERROR;
+        ctx->state = AUDIO_STATE_ERROR;
     }
 }
 
-static void AudioPlay_CheckFinish(audio_context_t *ctx)
+static void AudioPlay_HandlePauseToggle(audio_context_t *ctx)
 {
-    if ((ctx->decode_done != 0U) &&
-        (ctx->dma_idle != 0U) &&
-        (AudioApp_PcmReadyCount(ctx) == 0U) &&
-        (ctx->run_state != AUDIO_TASK_STATE_FINISHED))
+    if (ctx->toggle_pause_request == 0U)
     {
-        ctx->run_state = AUDIO_TASK_STATE_FINISHED;
-        printf("[PLAY] playback finished\r\n");
+        return;
+    }
+
+    ctx->toggle_pause_request = 0U;
+
+    if (ctx->state == AUDIO_STATE_PAUSE)
+    {
+        HAL_I2S_DMAResume(ctx->i2s);
+        ctx->state = AUDIO_STATE_PLAY;
+        return;
+    }
+
+    if ((ctx->state == AUDIO_STATE_PLAY) && (ctx->dma_idle == 0U))
+    {
+        HAL_I2S_DMAPause(ctx->i2s);
+        ctx->state = AUDIO_STATE_PAUSE;
     }
 }
 
@@ -124,10 +135,14 @@ static void AudioPlay_Report(audio_context_t *ctx)
     static uint32_t s_last_dma_total = 0U;
     static uint32_t s_last_underrun_total = 0U;
     TickType_t now_tick;
+    UBaseType_t sd_stack_free;
     UBaseType_t dec_stack_free;
     UBaseType_t play_stack_free;
+    UBaseType_t ui_stack_free;
     uint32_t dma_delta;
     uint32_t underrun_delta;
+    uint8_t ready_count;
+    uint8_t busy_count;
     const char *smooth_text;
 
     now_tick = xTaskGetTickCount();
@@ -137,35 +152,41 @@ static void AudioPlay_Report(audio_context_t *ctx)
     }
     s_last_report_tick = now_tick;
 
+    sd_stack_free = (ctx->sd_task_handle != NULL) ?
+                    uxTaskGetStackHighWaterMark(ctx->sd_task_handle) : 0U;
     dec_stack_free = (ctx->decode_task_handle != NULL) ?
                      uxTaskGetStackHighWaterMark(ctx->decode_task_handle) : 0U;
     play_stack_free = uxTaskGetStackHighWaterMark(NULL);
+    ui_stack_free = (ctx->lvgl_task_handle != NULL) ?
+                    uxTaskGetStackHighWaterMark(ctx->lvgl_task_handle) : 0U;
 
     dma_delta = ctx->dma_complete_count - s_last_dma_total;
     underrun_delta = ctx->underrun_count - s_last_underrun_total;
+    ready_count = AudioApp_PcmReadyCount(ctx);
+    busy_count = AudioApp_PcmBusyCount(ctx);
 
     s_last_dma_total = ctx->dma_complete_count;
     s_last_underrun_total = ctx->underrun_count;
 
     smooth_text = (underrun_delta == 0U) ? "OK" : "XRUN";
 
-    printf("[PLAY] state=%s smooth=%s file=%s hz=%lu ch=%u br=%uk ready=%u/%u "
-           "dma/s=%lu xr_total=%lu low=%lu frames=%lu sd=%luB stack(dec/play)=%lu/%lu\r\n",
-           AudioApp_StateString(ctx->run_state),
+    printf("[PLAY] state=%s smooth=%s file=%s busy=%u/%u ready=%u dma/s=%lu xr_total=%lu "
+           "stream=%luB sdrefill=%lu frames=%lu stack(sd/dec/play/ui)=%lu/%lu/%lu/%lu\r\n",
+           AudioApp_StateString(ctx->state),
            smooth_text,
            ctx->file_path,
-           (unsigned long)ctx->current_sample_rate,
-           (unsigned int)ctx->current_channels,
-           (unsigned int)ctx->current_bitrate_kbps,
-           (unsigned int)AudioApp_PcmReadyCount(ctx),
+           (unsigned int)busy_count,
            (unsigned int)AUDIO_PCM_BLOCK_COUNT,
+           (unsigned int)ready_count,
            (unsigned long)dma_delta,
            (unsigned long)ctx->underrun_count,
-           (unsigned long)ctx->low_buffer_count,
+           (unsigned long)AudioApp_StreamGetLevel(ctx),
+           (unsigned long)ctx->sd_refill_count,
            (unsigned long)ctx->decoded_frame_count,
-           (unsigned long)ctx->sd_read_bytes,
+           (unsigned long)sd_stack_free,
            (unsigned long)dec_stack_free,
-           (unsigned long)play_stack_free);
+           (unsigned long)play_stack_free,
+           (unsigned long)ui_stack_free);
 }
 
 void AudioPlayTask(void *argument)
@@ -179,21 +200,43 @@ void AudioPlayTask(void *argument)
     for (;;)
     {
         notify_value = 0U;
-        (void)xTaskNotifyWait(0U, 0xFFFFFFFFUL, &notify_value, pdMS_TO_TICKS(50));
+        (void)xTaskNotifyWait(0U, 0xFFFFFFFFUL, &notify_value, portMAX_DELAY);
 
         if ((notify_value & AUDIO_PLAY_NOTIFY_ERROR) != 0U)
         {
-            ctx->run_state = AUDIO_TASK_STATE_ERROR;
+            ctx->state = AUDIO_STATE_ERROR;
+            AudioApp_StopDma(ctx);
+            AudioPlay_Report(ctx);
+            continue;
         }
 
-        if (ctx->run_state == AUDIO_TASK_STATE_ERROR)
+        if ((notify_value & AUDIO_PLAY_NOTIFY_STOP) != 0U)
         {
             AudioApp_StopDma(ctx);
+            if (ctx->state != AUDIO_STATE_ERROR)
+            {
+                ctx->state = AUDIO_STATE_IDLE;
+            }
         }
-        else
+
+        if ((notify_value & AUDIO_PLAY_NOTIFY_PAUSE_TOGGLE) != 0U)
+        {
+            AudioPlay_HandlePauseToggle(ctx);
+        }
+
+        if ((ctx->state != AUDIO_STATE_ERROR) &&
+            ((notify_value & AUDIO_PLAY_NOTIFY_PCM_READY) != 0U ||
+             (notify_value & AUDIO_PLAY_NOTIFY_DMA_DONE) != 0U ||
+             (notify_value & AUDIO_PLAY_NOTIFY_DECODE_DONE) != 0U))
         {
             AudioPlay_TryStart(ctx);
-            AudioPlay_CheckFinish(ctx);
+
+            if ((ctx->decode_done != 0U) &&
+                (ctx->dma_idle != 0U) &&
+                (AudioApp_PcmReadyCount(ctx) == 0U))
+            {
+                ctx->state = AUDIO_STATE_IDLE;
+            }
         }
 
         AudioPlay_Report(ctx);
@@ -215,7 +258,7 @@ void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s)
         return;
     }
 
-    done_index = ctx->active_index;
+    done_index = ctx->dma_active_block;
     ctx->dma_complete_count++;
     ctx->pcm_sample_count[done_index] = 0U;
     ctx->pcm_state[done_index] = AUDIO_PCM_EMPTY;
@@ -226,9 +269,7 @@ void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s)
     }
 
     next_block = AudioApp_FindNextReadyBlock(ctx, done_index);
-    if (((ctx->run_state == AUDIO_TASK_STATE_PLAYING) ||
-         (ctx->run_state == AUDIO_TASK_STATE_BUFFERING)) &&
-        (next_block >= 0))
+    if ((ctx->state == AUDIO_STATE_PLAY) && (next_block >= 0))
     {
         if (AudioPlay_StartBlockFromIsr(ctx, (uint8_t)next_block) == HAL_OK)
         {
@@ -240,17 +281,27 @@ void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s)
         else
         {
             ctx->dma_idle = 1U;
-            ctx->run_state = AUDIO_TASK_STATE_ERROR;
+            ctx->state = AUDIO_STATE_ERROR;
         }
     }
     else
     {
         ctx->dma_idle = 1U;
-        if (((ctx->run_state == AUDIO_TASK_STATE_PLAYING) ||
-             (ctx->run_state == AUDIO_TASK_STATE_BUFFERING)) &&
-            (ctx->decode_done == 0U))
+        if ((ctx->state == AUDIO_STATE_PLAY) && (ctx->decode_done == 0U))
         {
             ctx->underrun_count++;
+            ctx->state = AUDIO_STATE_IDLE;
+            if (ctx->sd_task_handle != NULL)
+            {
+                (void)xTaskNotifyFromISR(ctx->sd_task_handle,
+                                         AUDIO_SD_NOTIFY_REFILL,
+                                         eSetBits,
+                                         &high_task_woken);
+            }
+        }
+        else if (ctx->state != AUDIO_STATE_ERROR)
+        {
+            ctx->state = AUDIO_STATE_IDLE;
         }
     }
 
@@ -278,7 +329,7 @@ void HAL_I2S_ErrorCallback(I2S_HandleTypeDef *hi2s)
         return;
     }
 
-    ctx->run_state = AUDIO_TASK_STATE_ERROR;
+    ctx->state = AUDIO_STATE_ERROR;
     ctx->dma_idle = 1U;
 
     if (ctx->play_task_handle != NULL)

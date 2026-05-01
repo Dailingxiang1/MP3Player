@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F407xx,LV_CONF_INCLUDE_SIMPLE,LV_LVGL_H_INCLUDE_SIMPLE</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;../FATFS/Target;../FATFS/App;../Middlewares/Third_Party/FatFs/src;./MP3;../MyApp;../LCD_Driver;../lvgl;../lvgl/src;../lvgl/port;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;../FATFS/Target;../FATFS/App;../Middlewares/Third_Party/FatFs/src;./MP3;../MyApp;../LCD_Driver;../lvgl;../lvgl/src;../lvgl/port;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../SEGGER_RTT_V782/RTT;../SEGGER_RTT_V782/Config</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -917,6 +917,51 @@
                   </Cads>
                 </FileArmAds>
               </FileOption>
+            </File>
+            <File>
+              <FileName>audio_app.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\SRC\audio_app.c</FilePath>
+            </File>
+            <File>
+              <FileName>audio_sd_prefetch_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\SRC\audio_sd_prefetch_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>audio_decoder_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\SRC\audio_decoder_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>audio_play_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\SRC\audio_play_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>audio_lvgl_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\SRC\audio_lvgl_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>audio_player_ui_compat.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\SRC\audio_player_ui_compat.c</FilePath>
+            </File>
+            <File>
+              <FileName>player_ui.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\MyApp\player_ui.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>SEGGER RTT</GroupName>
+          <Files>
+            <File>
+              <FileName>SEGGER_RTT.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\SEGGER_RTT_V782\RTT\SEGGER_RTT.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -2493,7 +2538,7 @@
               <RVCTZI>0</RVCTZI>
               <RVCTOtherData>0</RVCTOtherData>
               <ModuleSelection>0</ModuleSelection>
-              <IncludeInBuild>1</IncludeInBuild>
+              <IncludeInBuild>0</IncludeInBuild>
               <AlwaysBuild>2</AlwaysBuild>
               <GenerateAssemblyFile>2</GenerateAssemblyFile>
               <AssembleAssemblyFile>2</AssembleAssemblyFile>
@@ -3143,6 +3188,11 @@
               <FileName>lv_textarea.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\lvgl\src\widgets\lv_textarea.c</FilePath>
+            </File>
+            <File>
+              <FileName>lv_fs_fatfs.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\lvgl\src\extra\libs\fsdrv\lv_fs_fatfs.c</FilePath>
             </File>
           </Files>
         </Group>

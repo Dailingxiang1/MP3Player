@@ -380,11 +380,11 @@ void PlayerUi_Init(audio_player_t *player)
     lv_obj_set_style_text_color(scr, lv_color_hex(0xE5ECF6), LV_PART_MAIN);
 
     s_title = create_label(scr, PLAYER_UI_SCREEN_W, LV_LABEL_LONG_CLIP, &lv_font_montserrat_20, lv_color_hex(0xF8FAFC), LV_TEXT_ALIGN_CENTER);
-    lv_label_set_text(s_title, "MP3 Player Plus");
+    lv_label_set_text(s_title, "MP3 Player RTOS");
     lv_obj_set_pos(s_title, 0, 10);
 
     s_subtitle = create_label(scr, PLAYER_UI_SCREEN_W, LV_LABEL_LONG_CLIP, &lv_font_montserrat_14, lv_color_hex(0x8DA3C2), LV_TEXT_ALIGN_CENTER);
-    lv_label_set_text(s_subtitle, "Audio-first touch console");
+    lv_label_set_text(s_subtitle, "Author-DaiLingxiang");
     lv_obj_set_pos(s_subtitle, 0, 34);
 
     s_card = lv_obj_create(scr);

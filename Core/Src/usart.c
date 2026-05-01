@@ -21,6 +21,7 @@
 #include "usart.h"
 
 /* USER CODE BEGIN 0 */
+#include "SEGGER_RTT.h"
 
 /* USER CODE END 0 */
 
@@ -126,16 +127,33 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 
 void UART_Printf(UART_HandleTypeDef *huart, const char *fmt, ...)
 {
-    char buffer[128]; // ������Ҫ������С
+    char buffer[128];
+    int len;
     va_list args;
+
+    (void)huart;
+
     va_start(args, fmt);
-    vsnprintf(buffer, sizeof(buffer), fmt, args); // ��ʽ���������
+    len = vsnprintf(buffer, sizeof(buffer), fmt, args);
     va_end(args);
-    HAL_UART_Transmit(huart, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+
+    if (len <= 0)
+    {
+        return;
+    }
+
+    if (len > (int)sizeof(buffer))
+    {
+        len = (int)sizeof(buffer);
+    }
+
+    SEGGER_RTT_Write(0, buffer, (unsigned)len);
 }
-int fputc(int Byte,FILE* ftr)
+
+int fputc(int Byte, FILE *ftr)
 {
-	HAL_UART_Transmit(&huart1,(uint8_t*)&Byte,1,10);
-	return Byte;
+    (void)ftr;
+    SEGGER_RTT_PutChar(0, (char)Byte);
+    return Byte;
 }
 /* USER CODE END 1 */

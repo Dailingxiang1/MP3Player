@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static void AudioDecoder_MonoToStereo(int16_t *pcm, int samples_per_channel)
+static void AudioDecode_MonoToStereo(int16_t *pcm, int samples_per_channel)
 {
     int i;
 
@@ -15,114 +15,63 @@ static void AudioDecoder_MonoToStereo(int16_t *pcm, int samples_per_channel)
     }
 }
 
-static FRESULT AudioDecoder_Refill(audio_context_t *ctx)
+/**
+ * @brief 从压缩流 ring buffer 中准备一段连续的线性视图给 minimp3。
+ *
+ * 说明：
+ * - 如果读指针到写指针之间本来就是连续的，直接使用 ring buffer 尾部；
+ * - 如果数据跨越缓冲区尾部，则拷贝到线性视图缓冲区；
+ * - 这样能在“结构仍然简单”的前提下实现 ring buffer。
+ */
+static uint8_t *AudioDecode_PrepareLinearView(audio_context_t *ctx, uint32_t *linear_bytes)
 {
-    uint8_t *stream;
-    UINT bytes_read;
-    FRESULT fres;
-    int tail_free;
-    int to_read;
+    uint32_t contiguous_bytes;
 
-    if ((ctx->eof != 0U) || (ctx->stream_bytes >= (int)AUDIO_MP3_REFILL_THRESHOLD))
+    contiguous_bytes = AudioApp_StreamGetContiguousRead(ctx);
+    *linear_bytes = AudioApp_StreamGetLevel(ctx);
+    if (*linear_bytes == 0U)
     {
-        return FR_OK;
+        return NULL;
     }
 
-    stream = AudioApp_GetStreamBuffer();
-
-    if (ctx->stream_offset > (int)(AUDIO_MP3_STREAM_BUFFER_SIZE / 2U))
+    if (contiguous_bytes == *linear_bytes)
     {
-        if (ctx->stream_bytes > 0)
-        {
-            memmove(stream, &stream[ctx->stream_offset], (size_t)ctx->stream_bytes);
-        }
-        ctx->stream_offset = 0;
+        return &AudioApp_GetStreamBuffer()[ctx->stream_read_index];
     }
 
-    tail_free = (int)AUDIO_MP3_STREAM_BUFFER_SIZE - (ctx->stream_offset + ctx->stream_bytes);
-    if (tail_free < (int)AUDIO_MP3_READ_CHUNK)
-    {
-        if (ctx->stream_bytes > 0)
-        {
-            memmove(stream, &stream[ctx->stream_offset], (size_t)ctx->stream_bytes);
-        }
-        ctx->stream_offset = 0;
-        tail_free = (int)AUDIO_MP3_STREAM_BUFFER_SIZE - ctx->stream_bytes;
-    }
-
-    to_read = tail_free;
-    if (to_read > (int)AUDIO_MP3_READ_CHUNK)
-    {
-        to_read = (int)AUDIO_MP3_READ_CHUNK;
-    }
-
-    to_read &= ~511;
-    if (to_read <= 0)
-    {
-        return FR_OK;
-    }
-
-    bytes_read = 0U;
-    fres = f_read(ctx->file,
-                  &stream[ctx->stream_offset + ctx->stream_bytes],
-                  (UINT)to_read,
-                  &bytes_read);
-    if (fres != FR_OK)
-    {
-        return fres;
-    }
-
-    ctx->sd_read_bytes += (uint32_t)bytes_read;
-    if (bytes_read == 0U)
-    {
-        ctx->eof = 1U;
-    }
-    else
-    {
-        ctx->stream_bytes += (int)bytes_read;
-    }
-
-    return FR_OK;
+    *linear_bytes = AudioApp_StreamLinearizeForDecode(ctx);
+    return AudioApp_GetLinearViewBuffer();
 }
 
-static int AudioDecoder_DecodeOneFrame(audio_context_t *ctx,
-                                       int16_t *pcm,
-                                       uint16_t *out_samples)
+static int AudioDecode_OneFrame(audio_context_t *ctx,
+                                int16_t *pcm,
+                                uint16_t *out_samples)
 {
-    uint8_t *stream;
     int guard;
 
-    stream = AudioApp_GetStreamBuffer();
     *out_samples = 0U;
 
-    for (guard = 0; guard < AUDIO_MP3_SEARCH_GUARD; guard++)
+    for (guard = 0; guard < AUDIO_DECODE_SEARCH_GUARD; guard++)
     {
         int samples_per_channel;
-        FRESULT fres;
+        uint32_t linear_bytes;
+        uint8_t *linear_view;
 
-        fres = AudioDecoder_Refill(ctx);
-        if (fres != FR_OK)
-        {
-            ctx->last_fres = fres;
-            ctx->run_state = AUDIO_TASK_STATE_ERROR;
-            return -1;
-        }
-
-        if (ctx->stream_bytes <= 0)
+        linear_view = AudioDecode_PrepareLinearView(ctx, &linear_bytes);
+        if ((linear_view == NULL) || (linear_bytes == 0U))
         {
             return 0;
         }
 
         samples_per_channel = mp3dec_decode_frame(&ctx->decoder,
-                                                  &stream[ctx->stream_offset],
-                                                  ctx->stream_bytes,
+                                                  linear_view,
+                                                  (int)linear_bytes,
                                                   pcm,
                                                   &ctx->frame_info);
 
         if (ctx->frame_info.frame_bytes > 0)
         {
-            ctx->stream_offset += ctx->frame_info.frame_bytes;
-            ctx->stream_bytes -= ctx->frame_info.frame_bytes;
+            AudioApp_StreamConsume(ctx, (uint32_t)ctx->frame_info.frame_bytes);
         }
 
         if ((samples_per_channel > 0) && (ctx->frame_info.frame_bytes > 0))
@@ -132,14 +81,14 @@ static int AudioDecoder_DecodeOneFrame(audio_context_t *ctx,
 
             if (ctx->frame_info.channels == 1)
             {
-                AudioDecoder_MonoToStereo(pcm, samples_per_channel);
+                AudioDecode_MonoToStereo(pcm, samples_per_channel);
                 ctx->current_channels = 2U;
                 *out_samples = (uint16_t)(samples_per_channel * 2);
             }
             else if (ctx->frame_info.channels == 2)
             {
-                ctx->current_channels = (uint16_t)ctx->frame_info.channels;
-                *out_samples = (uint16_t)(samples_per_channel * ctx->frame_info.channels);
+                ctx->current_channels = 2U;
+                *out_samples = (uint16_t)(samples_per_channel * 2);
             }
             else
             {
@@ -151,10 +100,9 @@ static int AudioDecoder_DecodeOneFrame(audio_context_t *ctx,
             return 1;
         }
 
-        if (ctx->frame_info.frame_bytes <= 0)
+        if (AudioApp_StreamGetLevel(ctx) > 0U)
         {
-            ctx->stream_offset++;
-            ctx->stream_bytes--;
+            AudioApp_StreamConsume(ctx, 1U);
             ctx->decode_skip_count++;
         }
     }
@@ -162,243 +110,134 @@ static int AudioDecoder_DecodeOneFrame(audio_context_t *ctx,
     return 0;
 }
 
-static int AudioDecoder_DecodeBlock(audio_context_t *ctx, uint8_t block_index)
-{
-    int16_t *pcm;
-    uint16_t total_samples;
-    uint16_t frame_samples;
-
-    pcm = AudioApp_GetPcmBlock(block_index);
-    total_samples = 0U;
-
-    while ((total_samples + MINIMP3_MAX_SAMPLES_PER_FRAME) <= AUDIO_PCM_BLOCK_SAMPLES)
-    {
-        int result = AudioDecoder_DecodeOneFrame(ctx, &pcm[total_samples], &frame_samples);
-
-        if (result < 0)
-        {
-            return -1;
-        }
-
-        if (result == 0)
-        {
-            break;
-        }
-
-        total_samples = (uint16_t)(total_samples + frame_samples);
-
-        if (ctx->decoded_frame_count == 1U)
-        {
-            printf("[DEC] first frame: hz=%lu ch=%u br=%uk\r\n",
-                   (unsigned long)ctx->current_sample_rate,
-                   (unsigned int)ctx->current_channels,
-                   (unsigned int)ctx->current_bitrate_kbps);
-        }
-    }
-
-    if (total_samples != 0U)
-    {
-        AudioApp_PublishBlock(ctx, block_index, total_samples);
-        return 1;
-    }
-
-    return 0;
-}
-
-static FRESULT AudioDecoder_OpenCurrentFile(audio_context_t *ctx)
-{
-    FRESULT fres;
-
-    fres = f_open(ctx->file, ctx->file_path, FA_READ);
-    if (fres != FR_OK)
-    {
-        return fres;
-    }
-
-    ctx->file_open = 1U;
-    ctx->run_state = AUDIO_TASK_STATE_BUFFERING;
-    mp3dec_init(&ctx->decoder);
-    return FR_OK;
-}
-
 void AudioDecodeTask(void *argument)
 {
     audio_context_t *ctx;
-    FRESULT fres;
+    uint32_t notify_value;
+    uint32_t local_song_generation;
 
     (void)argument;
     ctx = AudioApp_GetContext();
-
-    AudioApp_ResetPipeline(ctx);
-
-    printf("[DEC] mp3 stream profile=%s buf=%lu read=%lu refill=%lu\r\n",
-           AUDIO_MP3_STREAM_PROFILE_TEXT,
-           (unsigned long)AUDIO_MP3_STREAM_BUFFER_SIZE,
-           (unsigned long)AUDIO_MP3_READ_CHUNK,
-           (unsigned long)AUDIO_MP3_REFILL_THRESHOLD);
-    printf("[DEC] mount sd...\r\n");
-    fres = f_mount(ctx->fs, SDPath, 1);
-    if (fres != FR_OK)
-    {
-        ctx->last_fres = fres;
-        ctx->run_state = AUDIO_TASK_STATE_ERROR;
-        printf("[DEC] f_mount failed: %d\r\n", (int)fres);
-        if (ctx->play_task_handle != NULL)
-        {
-            (void)xTaskNotify(ctx->play_task_handle, AUDIO_PLAY_NOTIFY_ERROR, eSetBits);
-        }
-        for (;;)
-        {
-            vTaskDelay(pdMS_TO_TICKS(1000));
-        }
-    }
-
-    ctx->fs_mounted = 1U;
+    local_song_generation = 0U;
 
     for (;;)
     {
-        if (ctx->file_path[0] == '\0')
+        int block_index;
+        int decode_result;
+        uint16_t out_samples;
+
+        if (ctx->file_open == 0U)
         {
-            fres = AudioApp_FindFirstMp3(ctx, AUDIO_FILE_SCAN_PATH);
-            if (fres != FR_OK)
-            {
-                ctx->last_fres = fres;
-                ctx->run_state = AUDIO_TASK_STATE_ERROR;
-                printf("[DEC] no mp3 file found, fres=%d\r\n", (int)fres);
-            }
-        }
-
-        if (ctx->run_state == AUDIO_TASK_STATE_ERROR)
-        {
-            if (ctx->play_task_handle != NULL)
-            {
-                (void)xTaskNotify(ctx->play_task_handle, AUDIO_PLAY_NOTIFY_ERROR, eSetBits);
-            }
-            for (;;)
-            {
-                vTaskDelay(pdMS_TO_TICKS(1000));
-            }
-        }
-
-        printf("[DEC] open %s\r\n", ctx->file_path);
-        fres = AudioDecoder_OpenCurrentFile(ctx);
-        if (fres != FR_OK)
-        {
-            ctx->last_fres = fres;
-            ctx->run_state = AUDIO_TASK_STATE_ERROR;
-            printf("[DEC] f_open failed: %d\r\n", (int)fres);
-            if (ctx->play_task_handle != NULL)
-            {
-                (void)xTaskNotify(ctx->play_task_handle, AUDIO_PLAY_NOTIFY_ERROR, eSetBits);
-            }
-            for (;;)
-            {
-                vTaskDelay(pdMS_TO_TICKS(1000));
-            }
-        }
-
-        for (;;)
-        {
-            int block_index;
-            int decode_result;
-
-            if (ctx->next_song_request != 0U)
-            {
-                ctx->next_song_request = 0U;
-                break;
-            }
-
-            if (ctx->run_state == AUDIO_TASK_STATE_ERROR)
-            {
-                break;
-            }
-
-            block_index = AudioApp_ReserveEmptyBlock(ctx);
-            if (block_index < 0)
-            {
-                (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(50));
-                continue;
-            }
-
-            decode_result = AudioDecoder_DecodeBlock(ctx, (uint8_t)block_index);
-            if (decode_result > 0)
-            {
-                if (ctx->play_task_handle != NULL)
-                {
-                    (void)xTaskNotify(ctx->play_task_handle, AUDIO_PLAY_NOTIFY_DATA_READY, eSetBits);
-                }
-                continue;
-            }
-
-            AudioApp_ReleaseBlock(ctx, (uint8_t)block_index);
-
-            if (decode_result < 0)
-            {
-                break;
-            }
-
-            if ((ctx->eof != 0U) && (ctx->stream_bytes <= 0))
-            {
-                ctx->decode_done = 1U;
-                break;
-            }
-        }
-
-        AudioApp_CloseFile(ctx);
-
-        if (ctx->run_state == AUDIO_TASK_STATE_ERROR)
-        {
-            printf("[DEC] decode error, fres=%d\r\n", (int)ctx->last_fres);
-            if (ctx->play_task_handle != NULL)
-            {
-                (void)xTaskNotify(ctx->play_task_handle, AUDIO_PLAY_NOTIFY_ERROR, eSetBits);
-            }
-            for (;;)
-            {
-                vTaskDelay(pdMS_TO_TICKS(1000));
-            }
-        }
-
-        if (ctx->next_song_request != 0U)
-        {
-            ctx->next_song_request = 0U;
-            AudioApp_StopDma(ctx);
-            AudioApp_ResetPipeline(ctx);
-            fres = AudioApp_FindNextMp3(ctx, AUDIO_FILE_SCAN_PATH);
-            if (fres != FR_OK)
-            {
-                ctx->last_fres = fres;
-                ctx->run_state = AUDIO_TASK_STATE_ERROR;
-            }
+            (void)xTaskNotifyWait(0U, 0xFFFFFFFFUL, &notify_value, pdMS_TO_TICKS(100));
             continue;
         }
 
-        ctx->decode_done = 1U;
-        printf("[DEC] done, frames=%lu, bytes=%lu, skip=%lu\r\n",
-               (unsigned long)ctx->decoded_frame_count,
-               (unsigned long)ctx->sd_read_bytes,
-               (unsigned long)ctx->decode_skip_count);
-        if (ctx->play_task_handle != NULL)
+        if (local_song_generation != ctx->song_generation)
         {
-            (void)xTaskNotify(ctx->play_task_handle, AUDIO_PLAY_NOTIFY_DECODE_DONE, eSetBits);
+            local_song_generation = ctx->song_generation;
+            mp3dec_init(&ctx->decoder);
+            printf("[DEC] new song generation=%lu\r\n", (unsigned long)local_song_generation);
         }
 
-        for (;;)
+        block_index = AudioApp_ReserveEmptyBlock(ctx);
+        if (block_index < 0)
         {
-            (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-            if (ctx->next_song_request != 0U)
+            (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(10));
+            continue;
+        }
+
+        if (xSemaphoreTake(ctx->stream_mutex, portMAX_DELAY) != pdTRUE)
+        {
+            AudioApp_ReleaseBlock(ctx, (uint8_t)block_index);
+            continue;
+        }
+
+        decode_result = AudioDecode_OneFrame(ctx,
+                                             AudioApp_GetPcmBlock((uint8_t)block_index),
+                                             &out_samples);
+
+        if (AudioApp_StreamGetLevel(ctx) < AUDIO_STREAM_REFILL_WATERMARK)
+        {
+            if (ctx->sd_task_handle != NULL)
             {
-                ctx->next_song_request = 0U;
-                AudioApp_StopDma(ctx);
-                AudioApp_ResetPipeline(ctx);
-                fres = AudioApp_FindNextMp3(ctx, AUDIO_FILE_SCAN_PATH);
-                if (fres != FR_OK)
-                {
-                    ctx->last_fres = fres;
-                    ctx->run_state = AUDIO_TASK_STATE_ERROR;
-                }
-                break;
+                (void)xTaskNotify(ctx->sd_task_handle, AUDIO_SD_NOTIFY_REFILL, eSetBits);
             }
+        }
+
+        (void)xSemaphoreGive(ctx->stream_mutex);
+
+        /*
+         * 如果在本次解码前后歌曲已经被切换，则这块 PCM 属于旧歌，
+         * 直接丢弃，避免切歌瞬间把旧歌尾巴播出去。
+         */
+        if ((local_song_generation != ctx->song_generation) || (ctx->requested_track_step != 0))
+        {
+            AudioApp_ReleaseBlock(ctx, (uint8_t)block_index);
+            continue;
+        }
+
+        if (decode_result > 0)
+        {
+            AudioApp_PublishBlock(ctx, (uint8_t)block_index, out_samples);
+
+            /*
+             * 切歌/首歌启动时，只有当 ready PCM 块数达到预充门限后，
+             * 才允许播放任务真正起播。
+             *
+             * 这一步相当于给“切歌后的新歌”建立一个屏障：
+             * - 先完成至少 2 块 PCM 的准备
+             * - 再从 SWITCHING 切到 BUFFERING
+             *
+             * 这样可以避免“切歌时 PCM 一度为 0，然后再也起不来”的情况。
+             */
+            if (ctx->decoded_frame_count == 1U)
+            {
+                printf("[DEC] first frame: hz=%lu ch=%u br=%uk\r\n",
+                       (unsigned long)ctx->current_sample_rate,
+                       (unsigned int)ctx->current_channels,
+                       (unsigned int)ctx->current_bitrate_kbps);
+            }
+
+            if (ctx->play_task_handle != NULL)
+            {
+                (void)xTaskNotify(ctx->play_task_handle,
+                                  AUDIO_PLAY_NOTIFY_PCM_READY,
+                                  eSetBits);
+            }
+
+            /*
+             * 解码成功后只主动让出一个时间片，而不是人为把 ready block
+             * 长期限制在 1~2 块。这样既能给 LVGL 任务运行机会，
+             * 又能让 PCM 缓冲在空闲时自然填到 3/3，提高抗抖能力。
+             */
+            taskYIELD();
+            continue;
+        }
+
+        AudioApp_ReleaseBlock(ctx, (uint8_t)block_index);
+
+        if ((ctx->stream_eof != 0U) && (AudioApp_StreamGetLevel(ctx) == 0U))
+        {
+            if (ctx->decode_done == 0U)
+            {
+                ctx->decode_done = 1U;
+                printf("[DEC] decode finished frames=%lu bytes=%lu refill=%lu skip=%lu\r\n",
+                       (unsigned long)ctx->decoded_frame_count,
+                       (unsigned long)ctx->sd_read_bytes,
+                       (unsigned long)ctx->sd_refill_count,
+                       (unsigned long)ctx->decode_skip_count);
+                if (ctx->play_task_handle != NULL)
+                {
+                    (void)xTaskNotify(ctx->play_task_handle,
+                                      AUDIO_PLAY_NOTIFY_DECODE_DONE,
+                                      eSetBits);
+                }
+            }
+            (void)xTaskNotifyWait(0U, 0xFFFFFFFFUL, &notify_value, pdMS_TO_TICKS(100));
+        }
+        else
+        {
+            (void)xTaskNotifyWait(0U, 0xFFFFFFFFUL, &notify_value, pdMS_TO_TICKS(10));
         }
     }
 }

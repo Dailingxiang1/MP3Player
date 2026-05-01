@@ -27,8 +27,10 @@
 /* Includes ------------------------------------------------------------------*/
 #include "ff_gen_drv.h"
 #include "sd_diskio.h"
+#include <stdio.h>
 
 /* Private typedef -----------------------------------------------------------*/
+extern SD_HandleTypeDef hsd;
 /* Private define ------------------------------------------------------------*/
 /* use the default SD timout as defined in the platform BSP driver*/
 #if defined(SDMMC_DATATIMEOUT)
@@ -157,6 +159,14 @@ DRESULT SD_read(BYTE lun, BYTE *buff, DWORD sector, UINT count)
     {
     }
     res = RES_OK;
+  }
+  else
+  {
+    printf("[SDIO] read failed: sector=%lu count=%u err=0x%08lX state=%lu\r\n",
+           (unsigned long)sector,
+           (unsigned int)count,
+           (unsigned long)HAL_SD_GetError(&hsd),
+           (unsigned long)HAL_SD_GetCardState(&hsd));
   }
 
   return res;
