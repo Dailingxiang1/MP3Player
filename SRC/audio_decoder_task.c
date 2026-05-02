@@ -210,7 +210,7 @@ void AudioDecodeTask(void *argument)
              * 长期限制在 1~2 块。这样既能给 LVGL 任务运行机会，
              * 又能让 PCM 缓冲在空闲时自然填到 3/3，提高抗抖能力。
              */
-            taskYIELD();
+            vTaskDelay(pdMS_TO_TICKS(1));
             continue;
         }
 

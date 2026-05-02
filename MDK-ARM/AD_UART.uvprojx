@@ -3194,6 +3194,11 @@
               <FileType>1</FileType>
               <FilePath>..\lvgl\src\extra\libs\fsdrv\lv_fs_fatfs.c</FilePath>
             </File>
+            <File>
+              <FileName>lv_font_loader.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\lvgl\src\font\lv_font_loader.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

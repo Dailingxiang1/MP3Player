@@ -154,32 +154,12 @@ void AudioApp_FlushForSongSwitch(audio_context_t *ctx)
     AudioApp_StopDma(ctx);
     printf("[SD] sw1.2 stop dma done\r\n");
 
-    /**
-     * 清掉播放/解码任务上残留的通知状态，
-     * 避免切歌后旧通知把新歌流程“误推进”。
+    /*
+     * Do not clear task notification state/value during song switch.
+     * Concurrent DMA ISR and task notifications make this a high-risk point,
+     * and generation + STOP + buffer flush are enough to isolate old-song work.
      */
     printf("[SD] sw1.3 clear task notify start\r\n");
-	
-	taskENTER_CRITICAL();
-    if (ctx->decode_task_handle != NULL)
-    {
-        //(void)xTaskAbortDelay(ctx->decode_task_handle);
-        (void)xTaskNotifyStateClear(ctx->decode_task_handle);
-        (void)ulTaskNotifyValueClear(ctx->decode_task_handle, 0xFFFFFFFFUL);
-    }
-    if (ctx->play_task_handle != NULL)
-    {
-        //(void)xTaskAbortDelay(ctx->play_task_handle);
-        (void)xTaskNotifyStateClear(ctx->play_task_handle);
-        (void)ulTaskNotifyValueClear(ctx->play_task_handle, 0xFFFFFFFFUL);
-    }
-    if (ctx->sd_task_handle != NULL)
-    {
-        //(void)xTaskAbortDelay(ctx->sd_task_handle);
-        (void)xTaskNotifyStateClear(ctx->sd_task_handle);
-        (void)ulTaskNotifyValueClear(ctx->sd_task_handle, 0xFFFFFFFFUL);
-    }
-	taskEXIT_CRITICAL();
     printf("[SD] sw1.4 clear task notify done\r\n");
 
     /**
@@ -607,7 +587,7 @@ void AudioApp_CreateTasks(void)
     }
 
     AudioApp_ResetPipeline(ctx);
-
+	
     status = xTaskCreate(AudioSdTask,
                          "AudioSD",
                          AUDIO_SD_TASK_STACK_WORDS,

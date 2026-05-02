@@ -71,9 +71,9 @@
  * - 解码任务再次；
  * - SD 预取最低，因为它最容易阻塞在文件 I/O 上。
  */
-#define AUDIO_SD_TASK_PRIORITY             (configMAX_PRIORITIES - 5)
-#define AUDIO_DECODE_TASK_PRIORITY         (configMAX_PRIORITIES - 4)
-#define AUDIO_LVGL_TASK_PRIORITY           (configMAX_PRIORITIES - 3)
+#define AUDIO_DECODE_TASK_PRIORITY         (configMAX_PRIORITIES - 5)
+#define AUDIO_LVGL_TASK_PRIORITY           (configMAX_PRIORITIES - 4)
+#define AUDIO_SD_TASK_PRIORITY             (configMAX_PRIORITIES - 3)
 #define AUDIO_PLAY_TASK_PRIORITY           (configMAX_PRIORITIES - 2)
 
 /* ================================

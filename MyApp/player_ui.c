@@ -1,6 +1,7 @@
 #include "player_ui.h"
 
 #include "lvgl.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -365,6 +366,73 @@ static void update_buffer_bar(uint8_t count)
     label_set_text_if_changed(s_buffer_value, line);
 }
 
+///* 声明字体（指向SD卡中的bin文件）*/
+//static lv_font_t *my_font;
+
+///* 在LVGL初始化后的某个函数中 */
+//void test_sd_font(void)
+//{
+
+//	FIL test_file;
+//	if(f_open(&test_file, "0:/output.bin", FA_READ) == FR_OK) {
+//		printf("FatFS Read Normal\n");
+//		f_close(&test_file);
+//	} else {
+//		printf("FatFS 底层报错，请检查物理连接或挂载(f_mount)！\n");
+//	}
+//	
+//	lv_fs_file_t f;
+//	lv_fs_res_t res = lv_fs_open(&f, "S:output.bin", LV_FS_MODE_RD);
+//	if(res != LV_FS_RES_OK) {
+//		// 如果这里报错 12，说明 LVGL 的盘符映射逻辑没跑通
+//		printf("LVGL FS reflect failed: %d\n", res); 
+//	}
+//	else
+//		printf("LVGL FS reflect success\n"); 
+//	
+//	lv_mem_monitor_t mon;
+//	lv_mem_monitor(&mon);
+//	printf("Free memory before load: %d bytes\n", mon.free_size);
+//	
+//	
+//	uint8_t header[4];
+//	uint32_t br;
+//	lv_fs_open(&f, "S:output.bin", LV_FS_MODE_RD);
+//	lv_fs_read(&f, header, 4, &br);
+//	printf("Font Magic: %02X %02X %02X %02X\n", header[0], header[1], header[2], header[3]);
+//	lv_fs_close(&f);
+//    /* 加载SD卡中的字体文件，盘符' S:' 需与配置一致 */
+//    my_font = lv_font_load("S:small.bin");
+//    if(my_font == NULL) {
+//        printf("Font load failed!\n");
+//        return;
+//    }
+//	else
+//		printf("Font load success!\n");
+//	
+//	lv_mem_monitor(&mon);
+//	printf("Free memory after load: %d bytes\n", mon.free_size);
+//    
+//	 lv_obj_t *label = lv_label_create(lv_scr_act());
+
+//    lv_obj_set_width(label, 240);
+//    lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
+//    lv_obj_set_style_text_font(label, my_font, LV_PART_MAIN);
+//    lv_obj_set_style_text_color(label, lv_color_hex(0xF8FAFC), LV_PART_MAIN);
+//    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+//    lv_obj_set_style_bg_opa(label, LV_OPA_TRANSP, LV_PART_MAIN);
+//	
+//    lv_label_set_text(label, "0123456789");
+//    lv_obj_set_pos(label, 0, 120);
+//    /* 创建一个标签来测试字体 */
+////    s_subtitle = create_label(scr, PLAYER_UI_SCREEN_W, LV_LABEL_LONG_CLIP, &lv_font_montserrat_14, lv_color_hex(0x8DA3C2), LV_TEXT_ALIGN_CENTER);
+////    lv_label_set_text(s_subtitle, "Author-DaiLingxiang");
+////    lv_obj_set_pos(s_subtitle, 0, 34);
+//	
+////    lv_obj_t *label = lv_label_create(lv_scr_act());
+////    lv_obj_set_style_text_font(label, my_font, 0);
+////    lv_label_set_text(label, "你好，LVGL！Hello World!");
+//}
 void PlayerUi_Init(audio_player_t *player)
 {
     lv_obj_t *scr = lv_scr_act();
@@ -384,9 +452,9 @@ void PlayerUi_Init(audio_player_t *player)
     lv_obj_set_pos(s_title, 0, 10);
 
     s_subtitle = create_label(scr, PLAYER_UI_SCREEN_W, LV_LABEL_LONG_CLIP, &lv_font_montserrat_14, lv_color_hex(0x8DA3C2), LV_TEXT_ALIGN_CENTER);
-    lv_label_set_text(s_subtitle, "Author-DaiLingxiang");
+    lv_label_set_text(s_subtitle, "Authored by DaiLingxiang");
     lv_obj_set_pos(s_subtitle, 0, 34);
-
+	
     s_card = lv_obj_create(scr);
     style_panel(s_card,
                 lv_color_hex(0x121C2A),

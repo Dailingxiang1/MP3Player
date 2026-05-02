@@ -34,6 +34,10 @@ extern "C" {
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
+
+#include "FreeRTOS.h"
+#include "semphr.h"
+#include "cmsis_os.h"
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
